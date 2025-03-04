@@ -1,31 +1,42 @@
 import { safe, SafeResult } from 'ts-safe';
 import { randomId, withTimeout } from './shared';
 import type {
-  GraphEndEvent,
-  GraphExecutor,
-  GraphStartEvent,
-  GraphStructure,
   NodeEndEvent,
   NodeStartEvent,
   RunOptions,
-  Graph,
   NodeContext,
-  History,
+  DefaultRegistry,
+  WorkFlowRegistry,
+  WorkFlowExecutor,
+  WorkFlowStructure,
+  HookRegistry,
+  WorkFlowEvent,
+  Node,
+  NodeHistory,
+  WorkFlowStartEvent,
+  WorkFlowEndEvent,
+  WorkFlowResult,
 } from './interfaces';
 
-const graphExecutor = ({
+type RegistryContext = {
+  nodes: Map<string, Function>;
+  routes: Map<string, Function>;
+  edges: Map<string, string>;
+};
+
+const createWorkflowExecutor = ({
   start,
   end,
   edges,
   nodes,
   routes,
-}: GraphStructure & { start: string; end?: string }): GraphExecutor<never> => {
+}: WorkFlowStructure & { start: string; end?: string }): WorkFlowExecutor<never> => {
   const eventHandlers: Array<(event: any) => any> = [];
-  return {
-    addEventListener(handler) {
+  const app = {
+    subscribe(handler) {
       eventHandlers.push(handler);
     },
-    removeEventListener(handler) {
+    unsubscribe(handler) {
       const index = eventHandlers.findIndex((v) => v === handler);
       if (index !== -1) eventHandlers.splice(index, 1);
     },
@@ -115,7 +126,7 @@ const graphExecutor = ({
           nextNode: context.next,
           isOk: result.isOk,
           node: { ...context.node },
-        } as History;
+        } as NodeHistory;
 
         context.histories.push(history);
         emit({
@@ -146,16 +157,16 @@ const graphExecutor = ({
 
       const emitGraphStartMessage = () => {
         emit({
-          eventType: 'GRAPH_START',
+          eventType: 'WORKFLOW_START',
           executionId,
           startedAt,
           input: input,
-        } as GraphStartEvent);
+        } as WorkFlowStartEvent);
       };
 
       const emitGraphEndMessage = (result: SafeResult) => {
         emit({
-          eventType: 'GRAPH_END',
+          eventType: 'WORKFLOW_END',
           executionId,
           startedAt,
           endedAt: Date.now(),
@@ -163,8 +174,20 @@ const graphExecutor = ({
           isOk: result.isOk,
           error: result.error,
           output: result.value,
-        } as GraphEndEvent);
+        } as WorkFlowEndEvent);
       };
+
+      const toResult = (isOk: boolean, output: unknown) => {
+        return {
+          startedAt,
+          endedAt: Date.now(),
+          histories: context.histories,
+          error: isOk ? undefined : output,
+          output: isOk ? output : undefined,
+          isOk,
+        } as WorkFlowResult<never, never>;
+      };
+
       return safe()
         .map(
           () =>
@@ -177,47 +200,101 @@ const graphExecutor = ({
               Math.max(0, opt.timeout)
             ) as Promise<never>
         )
+        .map((output) => toResult(true, output))
+        .catch((error) => toResult(false, error))
         .unwrap();
     },
+    attachHook(entryPoint) {
+      const createConnect = (emit: Function) => {
+        const handler = (event: WorkFlowEvent) => {
+          if (event.eventType == 'NODE_END' && (event.node as Node).name == entryPoint) emit(event.node.output!);
+        };
+        return {
+          connect: () => app.subscribe(handler),
+          disconect: () => app.unsubscribe(handler),
+        };
+      };
+      return createHookRegistry(createConnect) as HookRegistry;
+    },
   };
+
+  return app;
 };
 
-export const node = <Name extends string = string, Input = any, Output = any>(node: {
-  name: Name;
-  processor: (input: Input) => Output;
-}) => {
-  return node;
-};
+const createRegistry = (context: RegistryContext): DefaultRegistry => {
+  const { nodes, routes, edges } = context;
 
-export const createGraph = (): Graph => {
-  const nodes: Map<string, Function> = new Map();
-  const routes: Map<string, Function> = new Map();
-  const edges: Map<string, string> = new Map();
-
-  const graph: Graph = {
+  const registry: DefaultRegistry = {
     addNode(node) {
       if (nodes.has(node.name)) {
         throw new Error(`Node with name "${node.name}" already exists in the graph`);
       }
       nodes.set(node.name, node.processor);
-      return graph;
+      return registry;
     },
     edge(from, to) {
       if (edges.has(from) || routes.has(from)) {
         throw new Error(`Node "${from}" already has an outgoing connection`);
       }
       edges.set(from, to);
-      return graph;
+      return registry;
     },
     dynamicEdge(from, router) {
       if (edges.has(from) || routes.has(from)) {
         throw new Error(`Node "${from}" already has an outgoing connection`);
       }
       routes.set(from, router);
-      return graph;
+      return registry;
     },
+  };
+  return registry;
+};
+
+const createHookRegistry = (
+  connector: (emit: Function) => { connect: Function; disconect: Function }
+): HookRegistry => {
+  const nodes: Map<string, Function> = new Map();
+  const routes: Map<string, Function> = new Map();
+  const edges: Map<string, string> = new Map();
+
+  const registry = createRegistry({
+    nodes,
+    routes,
+    edges,
+  });
+  const hook: Omit<HookRegistry, keyof DefaultRegistry> = {
+    compile(startNode, endNode) {
+      const executor = createWorkflowExecutor({ start: startNode, end: endNode, edges, nodes, routes });
+
+      const {} = connector(executor.run);
+      return {
+        subscribe: executor.subscribe,
+        unsubscribe: executor.unsubscribe,
+        getStructure: executor.getStructure,
+        attachHook: executor.attachHook,
+        connect(consumer, options) {},
+        disconnect() {},
+      };
+    },
+  };
+
+  return Object.assign(registry, hook);
+};
+
+export const createWorkflow = (): WorkFlowRegistry => {
+  const nodes: Map<string, Function> = new Map();
+  const routes: Map<string, Function> = new Map();
+  const edges: Map<string, string> = new Map();
+
+  const registry = createRegistry({
+    nodes,
+    routes,
+    edges,
+  });
+
+  const workflow: Omit<WorkFlowRegistry, keyof DefaultRegistry> = {
     compile(start, end) {
-      return graphExecutor({
+      return createWorkflowExecutor({
         start,
         end,
         edges: new Map(edges),
@@ -226,7 +303,12 @@ export const createGraph = (): Graph => {
       });
     },
   };
-  return graph;
+  return Object.assign(registry, workflow);
 };
 
-export type { Graph, History };
+export const node = <Name extends string = string, Input = any, Output = any>(node: {
+  name: Name;
+  processor: (input: Input) => Output;
+}) => {
+  return node;
+};
