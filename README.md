@@ -1,460 +1,403 @@
-# Graph
+# ts-edge
 
-A powerful workflow orchestration system that allows you to build and execute complex processing pipelines with clear separation of concerns, strong typing, and robust error handling.
+A powerful, type-safe workflow orchestration library for TypeScript that enables you to create, connect, and execute graph-based workflows with full type inference.
 
-## Introduction
+## Features
 
-The Graph module lets you model complex workflows as a series of connected nodes, where each node performs a specific operation. This approach brings several benefits:
+- **Type-safe Node Connections**: All node connections are validated at compile time
+- **Flexible Workflow Design**: Create simple linear workflows or complex conditional branching
+- **Dynamic Routing**: Route workflow execution based on node outputs
+- **Hooks System**: Attach auxiliary workflows to monitor and react to main workflow execution
+- **Comprehensive Event System**: Subscribe to workflow and node execution events
+- **Error Handling**: Graceful error management with full execution history
+- **Async Support**: First-class support for asynchronous node processors
+- **Execution Control**: Timeouts and maximum node visit limits to prevent infinite loops
 
-- **Separation of Concerns**: Each node has a single responsibility
-- **Reusability**: Nodes can be reused across different workflows
-- **Testability**: Individual nodes can be tested in isolation
-- **Visualization**: Workflow structure can be easily visualized
-- **Maintainability**: Graph structure makes dependencies explicit
+## Installation
 
-## Key Concepts
-
-- **Node**: A processing unit that takes an input and produces an output
-- **Edge**: A type-safe connection between nodes that defines the flow of data
-- **Dynamic Edge**: A conditional connection that determines the next node at runtime
-- **Graph**: A collection of nodes and edges that form a workflow
-- **Executor**: An engine that runs a compiled graph with specific input
-
-## Getting Started
-
-```typescript
-import { createGraph, node } from 'ts-graph';
+```bash
+npm install ts-edge
 ```
 
 ## Basic Usage
 
-Let's build a simple user registration workflow:
+Here's a simple example to get you started:
 
 ```typescript
-// Create and compile the graph with inline node definitions
-const userRegistration = createGraph()
-  // Define nodes directly in the graph
-  .addNode({
-    name: 'validate',
-    processor: (userData) => {
-      if (!userData.email) throw new Error('Email is required');
-      if (!userData.password) throw new Error('Password is required');
-      return userData;
-    }
-  })
-  .addNode({
-    name: 'hashPassword',
-    processor: async (userData) => {
-      const hashedPassword = await bcrypt.hash(userData.password, 10);
-      return { ...userData, password: hashedPassword };
-    }
-  })
-  .addNode({
-    name: 'saveUser',
-    processor: async (userData) => {
-      const user = await db.users.create(userData);
-      return user.id;
-    }
-  })
-  .addNode({
-    name: 'sendEmail',
-    processor: async (userId) => {
-      const user = await db.users.findById(userId);
-      await emailService.sendWelcomeEmail(user.email);
-      return { success: true, userId };
-    }
-  })
-  // Connect nodes with type-safe edges
-  .edge('validate', 'hashPassword')
-  .edge('hashPassword', 'saveUser')
-  .edge('saveUser', 'sendEmail')
-  .compile('validate');
+import { createGraph, node } from 'ts-edge';
 
-// Execute the graph
-try {
-  const result = await userRegistration.run({
-    email: 'user@example.com',
-    password: 'secure123',
-    name: 'John Doe'
+// Create a workflow definition
+const workflow = createGraph()
+  .addNode({
+    name: 'input',
+    processor: (input: string) => input.toUpperCase()
+  })
+  .addNode({
+    name: 'transform',
+    processor: (input: string) => `Processed: ${input}`
+  })
+  .addNode({
+    name: 'output',
+    processor: (input: string) => ({ result: input })
+  })
+  .edge('input', 'transform')
+  .edge('transform', 'output');
+
+// Compile the workflow to create a runnable app
+const app = workflow.compile('input', 'output');
+
+// Execute the workflow
+app.run('hello world')
+  .then(result => {
+    console.log(result.output); // { result: 'Processed: HELLO WORLD' }
   });
-  
-  console.log('Registration complete:', result);
-} catch (error) {
-  console.error('Registration failed:', error.message);
+```
+
+## Core Concepts
+
+### Nodes
+
+A node is the basic building block of a workflow. Each node has:
+- A unique name
+- An input type
+- An output type
+- A processor function that transforms input to output
+
+```typescript
+// You can define nodes directly in addNode
+workflow.addNode({
+  name: 'myNode',
+  processor: (input: number) => input * 2
+});
+
+// Or use the node() helper for pre-defining nodes in separate files
+import { node } from 'ts-edge';
+
+// This can be useful for organizing complex workflows
+export const myReusableNode = node({
+  name: 'myNode',
+  processor: (input: number) => input * 2
+});
+```
+
+### Edges
+
+Edges connect nodes together, defining the flow of data through your workflow:
+
+```typescript
+// Static edge from nodeA to nodeB
+workflow.edge('nodeA', 'nodeB');
+
+// Dynamic edge that returns just the next node name
+workflow.dynamicEdge('nodeA', ({ output }) => {
+  return output > 10 ? 'largeValueNode' : 'smallValueNode';
+});
+
+// Dynamic edge that customizes the input for the next node
+workflow.dynamicEdge('nodeA', ({ output }) => {
+  return {
+    name: 'processingNode',
+    input: { 
+      originalValue: output,
+      processedValue: output * 2,
+      timestamp: Date.now()
+    }
+  };
+});
+```
+
+### Workflow Compilation
+
+After defining your nodes and edges, compile the workflow to create an executable app:
+
+```typescript
+const app = workflow.compile('startNode', 'endNode');
+```
+
+### Workflow Execution
+
+Run your workflow with a specific input:
+
+```typescript
+const result = await app.run(initialInput, {
+  timeout: 30000,          // Maximum execution time (ms)
+  maxNodeVisits: 100       // Prevent infinite loops
+});
+
+if (result.isOk) {
+  console.log('Success:', result.output);
+} else {
+  console.error('Error:', result.error);
 }
 ```
 
-## Advanced Features
+### Hooks
 
-### Dynamic Routing
-
-You can create conditional paths in your graph using `dynamicEdge`, with two powerful return options:
+Hooks let you attach auxiliary workflows that run in response to node execution:
 
 ```typescript
-const paymentGraph = createGraph()
+// Create the main workflow definition
+const workflow = createGraph()
   .addNode({
-    name: 'validatePayment',
-    processor: (payment) => {
-      // Validation logic
-      return payment;
-    }
-  })
+    name: 'main',
+    processor: (input: number) => input * 2
+  });
+
+// Compile the workflow to create a runnable app
+const app = workflow.compile('main');
+
+// Create a hook from the compiled app
+const hook = app.attachHook('main')
   .addNode({
-    name: 'processCreditCard',
-    processor: (payment) => processWithStripe(payment)
-  })
-  .addNode({
-    name: 'processPayPal',
-    processor: (payment) => processWithPayPal(payment)
-  })
-  .addNode({
-    name: 'applyDiscount',
-    processor: (payment) => {
-      // Apply special discount
-      return { ...payment, amount: payment.amount * 0.9 };
-    }
-  })
-  .addNode({
-    name: 'completeOrder',
-    processor: (paymentResult) => finalizeOrder(paymentResult)
-  })
-  // Choose processor based on payment method
-  .dynamicEdge('validatePayment', (result) => {
-    // Option 1: Return just the node name (uses original output as input)
-    if (result.output.method === 'credit_card') {
-      return 'processCreditCard';
-    } 
-    // Option 2: Return node name and custom input (allows transformation)
-    else if (result.output.method === 'paypal') {
-      // For PayPal payments, always apply discount first
-      return {
-        name: 'applyDiscount',
-        input: {
-          ...result.output,
-          promotion: 'PAYPAL_SPECIAL'
-        }
-      };
-    } else {
-      throw new Error('Unsupported payment method');
-    }
-  })
-  .edge('processCreditCard', 'completeOrder')
-  .edge('applyDiscount', 'processPayPal')
-  .edge('processPayPal', 'completeOrder')
-  .compile('validatePayment');
+    name: 'hook',
+    processor: (input: number) => input + 5
+  });
 
-// Run the graph
-const result = await paymentGraph.run({
-  amount: 99.99,
-  method: 'credit_card',
-  details: { /* card details */ }
-});
-```
+// Compile the hook to create a connector
+const connector = hook.compile('hook');
 
-### Event Listeners
-
-You can monitor the execution of your graph using event listeners:
-
-```typescript
-const executor = workflow.compile('startNode');
-
-// Add an event listener
-executor.addEventListener((event) => {
-  if (event.eventType === 'NODE_START') {
-    console.log(`Starting node: ${event.node.name}`);
-  } else if (event.eventType === 'NODE_END') {
-    if (event.isOk) {
-      console.log(`Node ${event.node.name} completed successfully`);
-    } else {
-      console.error(`Node ${event.node.name} failed: ${event.error.message}`);
-    }
-  } else if (event.eventType === 'GRAPH_END') {
-    console.log(`Graph execution completed in ${event.endedAt - event.startedAt}ms`);
-  }
-});
-
-// Execute the graph
-const result = await executor.run(inputData);
-```
-
-### Timeout and Execution Limits
-
-You can set limits to prevent infinite loops or long-running executions:
-
-```typescript
-const result = await executor.run(inputData, {
-  timeout: 30000,       // Maximum execution time (30 seconds)
-  maxNodeVisits: 100    // Maximum number of node visits (prevents infinite loops)
-});
-```
-
-## Practical Examples
-
-### Data Processing Pipeline
-
-```typescript
-const dataPipeline = createGraph()
-  .addNode(node({
-    name: 'fetchData',
-    processor: async (source) => fetchFromAPI(source)
-  }))
-  .addNode(node({
-    name: 'transform',
-    processor: (data) => transformData(data)
-  }))
-  .addNode(node({
-    name: 'validate',
-    processor: (data) => validateData(data)
-  }))
-  .addNode(node({
-    name: 'saveToDatabase',
-    processor: async (data) => saveData(data)
-  }))
-  .addNode(node({
-    name: 'generateReport',
-    processor: async (result) => createReport(result)
-  }))
-  .edge('fetchData', 'transform')
-  .edge('transform', 'validate')
-  .edge('validate', 'saveToDatabase')
-  .edge('saveToDatabase', 'generateReport')
-  .compile('fetchData');
-
-// Run the pipeline
-const report = await dataPipeline.run('https://api.example.com/data');
-```
-
-### Order Processing System
-
-```typescript
-const orderSystem = createGraph()
-  // Define nodes
-  .addNode(node({
-    name: 'validateOrder',
-    processor: (order) => validateOrderData(order)
-  }))
-  .addNode(node({
-    name: 'checkInventory',
-    processor: async (order) => checkItemsAvailability(order)
-  }))
-  .addNode(node({
-    name: 'processPayment',
-    processor: async (order) => chargeCustomer(order)
-  }))
-  .addNode(node({
-    name: 'updateInventory',
-    processor: async (order) => reduceInventoryLevels(order)
-  }))
-  .addNode(node({
-    name: 'createShipment',
-    processor: async (order) => scheduleShipment(order)
-  }))
-  .addNode(node({
-    name: 'sendNotification',
-    processor: async (order) => notifyCustomer(order)
-  }))
-  
-  // Define edges
-  .edge('validateOrder', 'checkInventory')
-  .edge('checkInventory', 'processPayment')
-  .edge('processPayment', 'updateInventory')
-  .edge('updateInventory', 'createShipment')
-  .edge('createShipment', 'sendNotification')
-  
-  // Add conditional routing
-  .dynamicEdge('checkInventory', (result) => {
-    const order = result.output;
-    if (order.items.some(item => item.backorder)) {
-      // Handle special case for backordered items
-      return { 
-        name: 'processBackorder',
-        input: { ...order, isBackorder: true }
-      };
-    }
-    return 'processPayment';
-  })
-  
-  // Compile the graph
-  .compile('validateOrder');
-
-// Process an order
-const orderResult = await orderSystem.run({
-  orderId: 'ORD-12345',
-  customerId: 'CUST-789',
-  items: [
-    { id: 'PROD-001', quantity: 2, price: 29.99 },
-    { id: 'PROD-005', quantity: 1, price: 49.99 }
-  ],
-  shippingAddress: {
-    // Address details
-  },
-  paymentMethod: {
-    // Payment details
+// Connect the hook with a result handler
+connector.connect({
+  onResult: (result) => {
+    console.log('Hook result:', result.output);
   }
 });
 ```
 
-## Type Safety
+## Event System
 
-The Graph module leverages TypeScript to provide exceptional type safety throughout your workflow:
+Subscribe to workflow events to monitor execution:
 
-### Type-Safe Edge Connections
+```typescript
+app.subscribe((event) => {
+  switch (event.eventType) {
+    case 'WORKFLOW_START':
+      console.log('Workflow started with input:', event.input);
+      break;
+    case 'NODE_START':
+      console.log('Node started:', event.node.name);
+      break;
+    case 'NODE_END':
+      console.log('Node ended:', event.node.name, 'Output:', event.node.output);
+      break;
+    case 'WORKFLOW_END':
+      console.log('Workflow ended. Success:', event.isOk);
+      break;
+  }
+});
+```
 
-One of the most powerful features of SafeChain's Graph is its ability to enforce type compatibility between connected nodes:
+## Advanced Examples
+
+### Conditional Branching with Custom Input
+
+```typescript
+const workflow = createGraph()
+  .addNode({
+    name: 'input',
+    processor: (input: { value: number; metadata: any }) => ({
+      value: input.value,
+      timestamp: Date.now(),
+      metadata: input.metadata
+    })
+  })
+  .addNode({
+    name: 'processHigh',
+    processor: (input: { original: number; category: string }) => 
+      `Value ${input.original} is categorized as ${input.category}`
+  })
+  .addNode({
+    name: 'processLow',
+    processor: (input: { original: number; category: string }) => 
+      `Value ${input.original} is categorized as ${input.category}`
+  })
+  .addNode({
+    name: 'output',
+    processor: (input: string) => ({ message: input })
+  })
+  // Dynamic edge with custom input transformation
+  .dynamicEdge('input', ({ output }) => {
+    const category = output.value > 50 ? 'high' : 'low';
+    const targetNode = output.value > 50 ? 'processHigh' : 'processLow';
+    
+    return {
+      name: targetNode,
+      input: {
+        original: output.value,
+        category: category,
+        // We can also pass through additional metadata if needed
+        metadata: output.metadata
+      }
+    };
+  })
+  .edge('processHigh', 'output')
+  .edge('processLow', 'output');
+
+const app = workflow.compile('input', 'output');
+
+
+```typescript
+const workflow = createGraph()
+  .addNode({
+    name: 'input',
+    processor: (input: number) => input
+  })
+  .addNode({
+    name: 'processEven',
+    processor: (input: number) => `${input} is even`
+  })
+  .addNode({
+    name: 'processOdd',
+    processor: (input: number) => `${input} is odd`
+  })
+  .addNode({
+    name: 'output',
+    processor: (input: string) => input
+  })
+  .dynamicEdge('input', ({ output }) => 
+    output % 2 === 0 ? 'processEven' : 'processOdd'
+  )
+  .edge('processEven', 'output')
+  .edge('processOdd', 'output');
+
+const app = workflow.compile('input', 'output');
+```
+
+### Data Transformation Workflow
 
 ```typescript
 interface UserData {
-  email: string;
-  password: string;
+  name: string;
+  age: number;
 }
 
-interface HashedUserData extends UserData {
-  password: string; // Now contains a hashed password
-}
-
-// Type definitions for clarity
-// Using node is optional but useful for separate node definitions
-const validateNode = node<'validate', UserData, UserData>({
-  name: 'validate',
-  processor: (userData) => {
-    if (!userData.email) throw new Error('Email is required');
-    return userData;
-  }
-});
-
-// Build the graph with inline node definitions (more common approach)
-const userRegistration = createGraph()
+const workflow = createGraph()
   .addNode({
     name: 'validate',
-    processor: (userData: UserData) => {
-      if (!userData.email) throw new Error('Email is required');
-      return userData;
+    processor: (input: UserData) => {
+      if (!input.name) throw new Error('Name is required');
+      if (input.age < 0) throw new Error('Age must be positive');
+      return input;
     }
   })
   .addNode({
-    name: 'hashPassword',
-    processor: async (userData: UserData): Promise<HashedUserData> => {
-      const hashedPassword = await bcrypt.hash(userData.password, 10);
-      return { ...userData, password: hashedPassword };
-    }
+    name: 'transform',
+    processor: (input: UserData) => ({
+      displayName: input.name.toUpperCase(),
+      isAdult: input.age >= 18,
+      ageCategory: input.age < 18 ? 'minor' : 'adult'
+    })
   })
-  .edge('validate', 'hashPassword') // Type-safe connection
-  .compile('validate');
+  .edge('validate', 'transform');
+
+const app = workflow.compile('validate', 'transform');
+
+// Run with validation error
+app.run({ name: '', age: 25 })
+  .then(result => {
+    console.log(result.isOk); // false
+    console.log(result.error); // Error: Name is required
+  });
+
+// Run with valid data
+app.run({ name: 'John', age: 25 })
+  .then(result => {
+    console.log(result.isOk); // true
+    console.log(result.output); // { displayName: 'JOHN', isAdult: true, ageCategory: 'adult' }
+  });
 ```
 
-The TypeScript compiler will prevent you from:
-- Creating duplicate edges from the same source node
-- Connecting nodes where the output type doesn't match the required input type
-- Using node names that don't exist in the graph
+## Testing
 
-This type safety catches potential errors at compile time rather than runtime.
+The library includes a comprehensive test suite. To run the tests:
+
+```bash
+npm test
+```
+
+Example test snippet:
+
+```typescript
+test('should run a simple workflow', async () => {
+  const workflow = createGraph()
+    .addNode({
+      name: 'start',
+      processor: (input: number) => input * 2
+    })
+    .addNode({
+      name: 'end',
+      processor: (input: number) => input + 10
+    })
+    .edge('start', 'end');
+  
+  const app = workflow.compile('start', 'end');
+  const result = await app.run(5);
+  
+  expect(result.isOk).toBe(true);
+  expect(result.output).toBe(20); // (5 * 2) + 10
+});
+```
 
 ## API Reference
 
-### createGraph()
+### Core Functions
 
-Creates a new graph builder.
+#### `createGraph()`
+Creates a new workflow registry for building workflows.
 
-### node()
+#### `node({ name, processor })` (Optional)
+Helper function to pre-define nodes that can be imported from separate files. Useful for organizing complex workflows into smaller parts, but using `addNode()` directly is also fine for most cases.
 
-Creates a reusable node definition with a name and processor function. This is mostly useful for defining nodes in separate files or creating reusable node libraries.
+### Workflow Methods
 
-```typescript
-node<Name extends string, Input, Output>({
-  name: Name;
-  processor: (input: Input) => Output | Promise<Output>;
-})
-```
+#### `addNode({ name, processor })`
+Adds a node to the workflow directly.
 
-> **Note**: While `node()` is useful for separating node definitions, it's often simpler to define nodes directly with `.addNode()` when building a graph.
+#### `edge(fromNode, toNode)`
+Creates a static edge between two nodes.
 
-### Methods on createGraph
+#### `dynamicEdge(fromNode, routerFunction)`
+Creates a dynamic edge using a router function. The router can return a node name or an object with `{ name, input }`.
 
-#### addNode()
+#### `compile(startNode, endNode?)`
+Compiles the workflow into an executable app.
 
-Adds a node to the graph.
+### App Methods
 
-```typescript
-addNode<Name extends string, Input, Output>(node: {
-  name: Name;
-  processor: (input: Input) => Output;
-}): createGraph
-```
+#### `run(input, options?)`
+Runs the workflow with the given input and options.
 
-#### edge()
+#### `subscribe(handler)`
+Subscribes to workflow events.
 
-Creates a direct connection between two nodes. TypeScript enforces that:
-- The source node exists and doesn't already have an outgoing connection
-- The destination node exists and can accept the output type of the source node
+#### `unsubscribe(handler)`
+Unsubscribes from workflow events.
 
-```typescript
-edge<FromName extends string, ToName extends string>(
-  from: FromName,
-  to: ToName
-): createGraph
-```
+#### `attachHook(entryPoint)`
+Attaches a hook to a specific node in the workflow. Returns a hook registry.
 
-#### dynamicEdge()
+### Hook Registry Methods
 
-Creates a conditional connection that determines the next node at runtime.
+#### `addNode({ name, processor })`
+Adds a node to the hook workflow.
 
-```typescript
-dynamicEdge<FromName extends string>(
-  from: FromName,
-  router: (result: {
-    input: any;
-    output: any;
-  }) => 
-    | string               // Just the next node name (uses original output as input)
-    | { name: string; input: any }  // Next node name with custom input
-    | null                 // No next node (end of flow)
-): createGraph
-```
+#### `edge(fromNode, toNode)`
+Creates a static edge between two nodes in the hook workflow.
 
-#### compile()
+#### `dynamicEdge(fromNode, routerFunction)`
+Creates a dynamic edge in the hook workflow.
 
-Compiles the graph into an executable form.
+#### `compile(startNode, endNode?)`
+Compiles the hook workflow into a connector.
 
-```typescript
-compile<StartName extends string, EndName extends string>(
-  startNode: StartName,
-  endNode?: EndName
-): GraphExecutor
-```
+### Connector Methods
 
-### Methods on GraphExecutor
+#### `connect(options?)`
+Connects the hook to the main workflow.
 
-#### run()
+#### `disconnect()`
+Disconnects the hook from the main workflow.
 
-Executes the graph with the given input.
+## License
 
-```typescript
-run(input: any, options?: {
-  timeout?: number;
-  maxNodeVisits?: number;
-}): SafeChain<Promise<any>>
-```
-
-#### addEventListener()
-
-Registers an event listener for graph execution events.
-
-```typescript
-addEventListener(handler: (event: GraphEvent) => any): void
-```
-
-#### removeEventListener()
-
-Removes a previously registered event listener.
-
-```typescript
-removeEventListener(handler: (event: GraphEvent) => any): void
-```
-
-#### getStructure()
-
-Returns the structure of the compiled graph.
-
-```typescript
-getStructure(): GraphStructure
-```
+MIT

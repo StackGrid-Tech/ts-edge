@@ -1,11 +1,15 @@
 {
-  "name": "ts-graph",
+  "name": "ts-edge",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "A strongly-typed graph-based workflow engine for building flexible, composable data processing pipelines with TypeScript",
   "keywords": [
     "graph",
     "workflow",
     "pipeline",
     "typescript",
+    "edge",
     "dataflow",
     "state-machine",
     "node-processing",
@@ -14,7 +18,7 @@
   ],
   "author": "cging",
   "license": "MIT",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -67,7 +71,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/cgoinglove/ts-graph.git"
+    "url": "https://github.com/cgoinglove/ts-edge.git"
   },
   "prettier": {
     "printWidth": 120,

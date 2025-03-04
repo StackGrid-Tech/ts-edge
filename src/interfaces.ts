@@ -106,7 +106,7 @@ export interface NodeContext {
  * Event emitted when a workflow starts execution.
  * @template Input - The input type for the workflow
  */
-export type WorkFlowStartEvent<Input = any> = {
+export type GraphStartEvent<Input = any> = {
   /** Unique ID for this workflow execution */
   executionId: string;
 
@@ -125,7 +125,7 @@ export type WorkFlowStartEvent<Input = any> = {
  * @template T - The node type
  * @template Output - The output type of the workflow
  */
-export type WorkFlowEndEvent<T extends Node = Node, Output = any> = {
+export type GraphEndEvent<T extends Node = Node, Output = any> = {
   /** Unique ID for this workflow execution */
   executionId: string;
 
@@ -193,13 +193,13 @@ export type NodeEndEvent<T extends Node = Node> = {
  * @template StartNodeName - The name of the start node
  * @template EndNodeName - The name of the end node
  */
-export type WorkFlowEvent<
+export type GraphEvent<
   T extends Node = Node,
   StartNodeName extends T['name'] = T['name'],
   EndNodeName extends T['name'] = T['name'],
 > =
-  | WorkFlowStartEvent<InputOf<T, StartNodeName>>
-  | WorkFlowEndEvent<T, OutputOf<T, EndNodeName>>
+  | GraphStartEvent<InputOf<T, StartNodeName>>
+  | GraphEndEvent<T, OutputOf<T, EndNodeName>>
   | NodeStartEvent<T>
   | NodeEndEvent<T>;
 
@@ -227,7 +227,7 @@ export interface RunOptions {
  * Represents the structure of a workflow with nodes, routes, and edges.
  * @template T - The node type
  */
-export interface WorkFlowStructure<T extends Node = Node> {
+export interface GraphStructure<T extends Node = Node> {
   /** Map of node names to their processor functions */
   nodes: Map<T['name'], Function>;
 
@@ -243,7 +243,7 @@ export interface WorkFlowStructure<T extends Node = Node> {
  * @template T - The node type
  * @template Output - The output type of the workflow
  */
-export type WorkFlowResult<T extends Node = never, Output = unknown> = {
+export type GraphResult<T extends Node = never, Output = unknown> = {
   /** Timestamp when the workflow started */
   startedAt: number;
 
@@ -284,7 +284,7 @@ export type WorkFlowResult<T extends Node = never, Output = unknown> = {
  * @template StartNode - The name of the start node
  * @template EndNode - The name of the end node
  */
-export interface WorkFlowRunner<
+export interface GraphRunner<
   T extends Node = never,
   StartNode extends T['name'] = never,
   EndNode extends T['name'] = never,
@@ -293,13 +293,13 @@ export interface WorkFlowRunner<
    * Gets the structure of the workflow.
    * @returns The workflow structure including nodes, routes, and edges
    */
-  getStructure(): WorkFlowStructure;
+  getStructure(): GraphStructure;
 
   /**
    * Subscribes to workflow events.
    * @param handler - Function to handle workflow events
    */
-  subscribe(handler: (event: WorkFlowEvent<T, StartNode, EndNode>) => any): void;
+  subscribe(handler: (event: GraphEvent<T, StartNode, EndNode>) => any): void;
 
   /**
    * Unsubscribes from workflow events.
@@ -321,7 +321,7 @@ export interface WorkFlowRunner<
    * @param options - Execution options
    * @returns A promise that resolves to the workflow result
    */
-  run(input: InputOf<T, StartNode>, options?: Partial<RunOptions>): Promise<WorkFlowResult<T, OutputOf<T, EndNode>>>;
+  run(input: InputOf<T, StartNode>, options?: Partial<RunOptions>): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
 }
 
 /**
@@ -339,13 +339,13 @@ export interface HookConnector<
    * Gets the structure of the workflow.
    * @returns The workflow structure including nodes, routes, and edges
    */
-  getStructure(): WorkFlowStructure;
+  getStructure(): GraphStructure;
 
   /**
    * Subscribes to workflow events.
    * @param handler - Function to handle workflow events
    */
-  subscribe(handler: (event: WorkFlowEvent<T, StartNode, EndNode>) => any): void;
+  subscribe(handler: (event: GraphEvent<T, StartNode, EndNode>) => any): void;
 
   /**
    * Unsubscribes from workflow events.
@@ -369,7 +369,7 @@ export interface HookConnector<
     options?: Partial<
       RunOptions & {
         /** Callback function that receives the result of the hook workflow */
-        onResult: (data: WorkFlowResult<T, OutputOf<T, EndNode>>) => any;
+        onResult: (data: GraphResult<T, OutputOf<T, EndNode>>) => any;
       }
     >
   ): void;
@@ -407,7 +407,7 @@ export interface DefaultRegistry<T extends Node = never, Connected extends strin
    */
   edge<
     FromName extends Exclude<T['name'], Connected>,
-    ToName extends Exclude<ConnectableNode<T, Extract<T, { name: FromName }>>, Extract<T, { name: FromName }>>,
+    ToName extends Exclude<ConnectableNode<T, Extract<T, { name: FromName }>>, FromName>,
   >(
     from: FromName,
     to: ToName
@@ -450,7 +450,7 @@ export interface DefaultRegistry<T extends Node = never, Connected extends strin
  * @template T - The node type
  * @template Connected - Names of nodes that already have outgoing connections
  */
-export interface WorkFlowRegistry<T extends Node = never, Connected extends string = never>
+export interface GraphRegistry<T extends Node = never, Connected extends string = never>
   extends DefaultRegistry<T, Connected> {
   /**
    * Adds a node to the workflow.
@@ -463,7 +463,7 @@ export interface WorkFlowRegistry<T extends Node = never, Connected extends stri
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
     processor: (input: Input) => Output;
-  }): WorkFlowRegistry<T | Node<Name, Input, Output>, Connected>;
+  }): GraphRegistry<T | Node<Name, Input, Output>, Connected>;
 
   /**
    * Creates a static edge between two nodes.
@@ -475,11 +475,11 @@ export interface WorkFlowRegistry<T extends Node = never, Connected extends stri
    */
   edge<
     FromName extends Exclude<T['name'], Connected>,
-    ToName extends Exclude<ConnectableNode<T, Extract<T, { name: FromName }>>, Extract<T, { name: FromName }>>,
+    ToName extends Exclude<ConnectableNode<T, Extract<T, { name: FromName }>>, FromName>,
   >(
     from: FromName,
     to: ToName
-  ): WorkFlowRegistry<T, Connected | FromName>;
+  ): GraphRegistry<T, Connected | FromName>;
 
   /**
    * Creates a dynamic edge from a node using a router function.
@@ -511,7 +511,7 @@ export interface WorkFlowRegistry<T extends Node = never, Connected extends stri
           | ToName
           | undefined
         >
-  ): WorkFlowRegistry<T, Connected | FromName>;
+  ): GraphRegistry<T, Connected | FromName>;
 
   /**
    * Compiles the workflow into an executable workflow runner.
@@ -524,7 +524,7 @@ export interface WorkFlowRegistry<T extends Node = never, Connected extends stri
   compile<StartName extends T['name'], EndName extends T['name']>(
     startNode: StartName,
     endNode?: EndName
-  ): WorkFlowRunner<T, StartName, EndName>;
+  ): GraphRunner<T, StartName, EndName>;
 }
 
 /**
@@ -561,7 +561,7 @@ export interface HookRegistry<
    */
   edge<
     FromName extends Exclude<T['name'], Connected>,
-    ToName extends Exclude<ConnectableNode<T, Extract<T, { name: FromName }>>, Extract<T, { name: FromName }>>,
+    ToName extends Exclude<ConnectableNode<T, Extract<T, { name: FromName }>>, FromName>,
   >(
     from: FromName,
     to: ToName

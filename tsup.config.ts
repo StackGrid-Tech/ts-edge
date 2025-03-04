@@ -7,4 +7,5 @@ export default defineConfig({
   minify: true,
   clean: true,
   outDir: 'dist',
+  noExternal: ['ts-safe'],
 });
