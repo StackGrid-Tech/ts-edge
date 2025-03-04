@@ -7,15 +7,14 @@ import type {
   NodeContext,
   DefaultRegistry,
   WorkFlowRegistry,
-  WorkFlowExecutor,
+  WorkFlowRunner,
   WorkFlowStructure,
   HookRegistry,
-  WorkFlowEvent,
-  Node,
   NodeHistory,
   WorkFlowStartEvent,
   WorkFlowEndEvent,
   WorkFlowResult,
+  WorkFlowEvent,
 } from './interfaces';
 
 type RegistryContext = {
@@ -24,15 +23,16 @@ type RegistryContext = {
   edges: Map<string, string>;
 };
 
-const createWorkflowExecutor = ({
+const createWorkflowRunner = ({
   start,
   end,
   edges,
   nodes,
   routes,
-}: WorkFlowStructure & { start: string; end?: string }): WorkFlowExecutor<never> => {
+}: WorkFlowStructure & { start: string; end?: string }): WorkFlowRunner<never> => {
   const eventHandlers: Array<(event: any) => any> = [];
-  const app = {
+  const hookMap: Map<string, Function[]> = new Map();
+  const pubsup = {
     subscribe(handler) {
       eventHandlers.push(handler);
     },
@@ -40,6 +40,21 @@ const createWorkflowExecutor = ({
       const index = eventHandlers.findIndex((v) => v === handler);
       if (index !== -1) eventHandlers.splice(index, 1);
     },
+    publish(event: WorkFlowEvent) {
+      // Using async to run each handler independently
+      // This ensures that errors in one handler won't affect the execution of others
+      eventHandlers.forEach(async (handler) => handler(event));
+    },
+  };
+
+  pubsup.subscribe((event: WorkFlowEvent) => {
+    if (event.eventType == 'NODE_END' && event.isOk) {
+      const hooks = hookMap.get(event.node.name) ?? [];
+      hooks.forEach(async (hook) => hook(event.node.output));
+    }
+  });
+
+  const app: WorkFlowRunner = {
     getStructure() {
       return {
         edges: new Map(edges),
@@ -49,7 +64,6 @@ const createWorkflowExecutor = ({
     },
     run(input, options) {
       const opt: RunOptions = { timeout: 600000, maxNodeVisits: 100, ...(options as any) };
-      const emit = (event: any) => eventHandlers.forEach((handler) => handler(event));
       if (!nodes.has(start as string)) {
         throw new Error(`Start node "${start}" not found in the graph`);
       }
@@ -72,7 +86,7 @@ const createWorkflowExecutor = ({
       const nodeStart = () => {
         const now = Date.now();
         context.timestamp = now;
-        emit({
+        pubsup.publish({
           executionId,
           eventType: 'NODE_START',
           startedAt: now,
@@ -129,7 +143,7 @@ const createWorkflowExecutor = ({
         } as NodeHistory;
 
         context.histories.push(history);
-        emit({
+        pubsup.publish({
           eventType: 'NODE_END',
           executionId,
           ...history,
@@ -156,7 +170,7 @@ const createWorkflowExecutor = ({
       };
 
       const emitGraphStartMessage = () => {
-        emit({
+        pubsup.publish({
           eventType: 'WORKFLOW_START',
           executionId,
           startedAt,
@@ -165,7 +179,7 @@ const createWorkflowExecutor = ({
       };
 
       const emitGraphEndMessage = (result: SafeResult) => {
-        emit({
+        pubsup.publish({
           eventType: 'WORKFLOW_END',
           executionId,
           startedAt,
@@ -204,17 +218,23 @@ const createWorkflowExecutor = ({
         .catch((error) => toResult(false, error))
         .unwrap();
     },
+    subscribe(handler) {
+      pubsup.subscribe(handler);
+    },
+    unsubscribe(handler) {
+      pubsup.unsubscribe(handler);
+    },
     attachHook(entryPoint) {
-      const createConnect = (emit: Function) => {
-        const handler = (event: WorkFlowEvent) => {
-          if (event.eventType == 'NODE_END' && (event.node as Node).name == entryPoint) emit(event.node.output!);
-        };
-        return {
-          connect: () => app.subscribe(handler),
-          disconect: () => app.unsubscribe(handler),
-        };
+      const observer = {
+        subscribe: (hook) => hookMap.set(entryPoint, [...(hookMap.get(entryPoint) ?? []), hook]),
+        unsubscribe: (hook) => {
+          hookMap.set(
+            entryPoint,
+            [...(hookMap.get(entryPoint) ?? [])].filter((h) => h != hook)
+          );
+        },
       };
-      return createHookRegistry(createConnect) as HookRegistry;
+      return createHookRegistry(observer) as HookRegistry;
     },
   };
 
@@ -250,9 +270,7 @@ const createRegistry = (context: RegistryContext): DefaultRegistry => {
   return registry;
 };
 
-const createHookRegistry = (
-  connector: (emit: Function) => { connect: Function; disconect: Function }
-): HookRegistry => {
+const createHookRegistry = (observer: { subscribe: Function; unsubscribe: Function }): HookRegistry => {
   const nodes: Map<string, Function> = new Map();
   const routes: Map<string, Function> = new Map();
   const edges: Map<string, string> = new Map();
@@ -264,16 +282,28 @@ const createHookRegistry = (
   });
   const hook: Omit<HookRegistry, keyof DefaultRegistry> = {
     compile(startNode, endNode) {
-      const executor = createWorkflowExecutor({ start: startNode, end: endNode, edges, nodes, routes });
-
-      const {} = connector(executor.run);
+      const executor = createWorkflowRunner({ start: startNode, end: endNode, edges, nodes, routes });
+      let handler: Function | undefined;
       return {
         subscribe: executor.subscribe,
         unsubscribe: executor.unsubscribe,
         getStructure: executor.getStructure,
         attachHook: executor.attachHook,
-        connect(consumer, options) {},
-        disconnect() {},
+        connect(options) {
+          handler = (output) => {
+            executor
+              .run(output as never, {
+                maxNodeVisits: options?.maxNodeVisits,
+                timeout: options?.timeout,
+              })
+              .then(options?.onResult);
+          };
+          observer.subscribe(handler);
+        },
+        disconnect() {
+          if (handler) observer.unsubscribe(handler);
+          handler = undefined;
+        },
       };
     },
   };
@@ -294,7 +324,7 @@ export const createWorkflow = (): WorkFlowRegistry => {
 
   const workflow: Omit<WorkFlowRegistry, keyof DefaultRegistry> = {
     compile(start, end) {
-      return createWorkflowExecutor({
+      return createWorkflowRunner({
         start,
         end,
         edges: new Map(edges),

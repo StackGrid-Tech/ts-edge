@@ -155,7 +155,7 @@ export type WorkFlowResult<T extends Node = never, Output = unknown> = {
     }
 );
 
-export interface WorkFlowExecutor<
+export interface WorkFlowRunner<
   T extends Node = never,
   StartNode extends T['name'] = never,
   EndNode extends T['name'] = never,
@@ -176,7 +176,13 @@ export interface HookConnector<
   subscribe(handler: (event: WorkFlowEvent<T, StartNode, EndNode>) => any): void;
   unsubscribe(handler: (event: any) => any): void;
   attachHook<EntryPointNode extends T>(entryPoint: EntryPointNode['name']): HookRegistry<never, never, EntryPointNode>;
-  connect(consumer: (data: WorkFlowResult<T, OutputOf<T, EndNode>>) => any, options?: Partial<RunOptions>): void;
+  connect(
+    options?: Partial<
+      RunOptions & {
+        onResult: (data: WorkFlowResult<T, OutputOf<T, EndNode>>) => any;
+      }
+    >
+  ): void;
   disconnect(): void;
 }
 
@@ -261,7 +267,7 @@ export interface WorkFlowRegistry<T extends Node = never, Connected extends stri
   compile<StartName extends T['name'], EndName extends T['name']>(
     startNode: StartName,
     endNode?: EndName
-  ): WorkFlowExecutor<T, StartName, EndName>;
+  ): WorkFlowRunner<T, StartName, EndName>;
 }
 
 export interface HookRegistry<
