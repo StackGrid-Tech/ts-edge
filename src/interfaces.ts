@@ -230,7 +230,7 @@ export interface RunOptions {
  * @template T - The node type
  */
 export interface GraphStructure<T extends Node = Node> {
-  /** Map of node names to their processor functions */
+  /** Map of node names to their execute functions */
   nodes: Map<T['name'], Function>;
 
   /** Map of node names to their routing functions (for dynamic edges) */
@@ -393,12 +393,12 @@ export interface DefaultRegistry<T extends Node = never, Connected extends strin
    * @template Name - The node name type
    * @template Input - The input data type
    * @template Output - The output data type
-   * @param node - The node definition including name and processor function
+   * @param node - The node definition including name and execute function
    */
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
-    processor: (input: Input) => Output;
-    schema?: ZodType<Input>;
+    execute: (input: Input) => Output;
+    parameters?: ZodType<Input>;
   });
 
   /**
@@ -460,13 +460,13 @@ export interface GraphRegistry<T extends Node = never, Connected extends string 
    * @template Name - The node name type
    * @template Input - The input data type
    * @template Output - The output data type
-   * @param node - The node definition including name and processor function
+   * @param node - The node definition including name and execute function
    * @returns Updated workflow registry with the new node
    */
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
-    processor: (input: Input) => Output;
-    schema?: ZodType<Input>;
+    execute: (input: Input) => Output;
+    parameters?: ZodType<Input>;
   }): GraphRegistry<T | Node<Name, Input, Output>, Connected>;
 
   /**
@@ -547,13 +547,13 @@ export interface HookRegistry<
    * @template Name - The node name type
    * @template Input - The input data type
    * @template Output - The output data type
-   * @param node - The node definition including name and processor function
+   * @param node - The node definition including name and execute function
    * @returns Updated hook registry with the new node
    */
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
-    processor: (input: Input) => Output;
-    schema?: ZodType<Input>;
+    execute: (input: Input) => Output;
+    parameters?: ZodType<Input>;
   }): HookRegistry<T | Node<Name, Input, Output>, Connected, EntryPointNode>;
 
   /**

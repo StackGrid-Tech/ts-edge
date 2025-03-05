@@ -10,7 +10,7 @@ A powerful, type-safe workflow orchestration library for TypeScript that enables
 - **Hooks System**: Attach auxiliary workflows to monitor and react to main workflow execution
 - **Comprehensive Event System**: Subscribe to workflow and node execution events
 - **Error Handling**: Graceful error management with full execution history
-- **Async Support**: First-class support for asynchronous node processors
+- **Async Support**: First-class support for asynchronous node executes
 - **Execution Control**: Timeouts and maximum node visit limits to prevent infinite loops
 
 ## Installation
@@ -30,15 +30,15 @@ import { createGraph, node } from 'ts-edge';
 const workflow = createGraph()
   .addNode({
     name: 'input',
-    processor: (input: string) => input.toUpperCase()
+    execute: (input: string) => input.toUpperCase()
   })
   .addNode({
     name: 'transform',
-    processor: (input: string) => `Processed: ${input}`
+    execute: (input: string) => `Processed: ${input}`
   })
   .addNode({
     name: 'output',
-    processor: (input: string) => ({ result: input })
+    execute: (input: string) => ({ result: input })
   })
   .edge('input', 'transform')
   .edge('transform', 'output');
@@ -61,13 +61,13 @@ A node is the basic building block of a workflow. Each node has:
 - A unique name
 - An input type
 - An output type
-- A processor function that transforms input to output
+- A execute function that transforms input to output
 
 ```typescript
 // You can define nodes directly in addNode
 workflow.addNode({
   name: 'myNode',
-  processor: (input: number) => input * 2
+  execute: (input: number) => input * 2
 });
 
 // Or use the node() helper for pre-defining nodes in separate files
@@ -76,7 +76,7 @@ import { node } from 'ts-edge';
 // This can be useful for organizing complex workflows
 export const myReusableNode = node({
   name: 'myNode',
-  processor: (input: number) => input * 2
+  execute: (input: number) => input * 2
 });
 ```
 
@@ -140,7 +140,7 @@ Hooks let you attach auxiliary workflows that run in response to node execution:
 const workflow = createGraph()
   .addNode({
     name: 'main',
-    processor: (input: number) => input * 2
+    execute: (input: number) => input * 2
   });
 
 // Compile the workflow to create a runnable app
@@ -150,7 +150,7 @@ const app = workflow.compile('main');
 const hook = app.attachHook('main')
   .addNode({
     name: 'hook',
-    processor: (input: number) => input + 5
+    execute: (input: number) => input + 5
   });
 
 // Compile the hook to create a connector
@@ -195,7 +195,7 @@ app.subscribe((event) => {
 const workflow = createGraph()
   .addNode({
     name: 'input',
-    processor: (input: { value: number; metadata: any }) => ({
+    execute: (input: { value: number; metadata: any }) => ({
       value: input.value,
       timestamp: Date.now(),
       metadata: input.metadata
@@ -203,17 +203,17 @@ const workflow = createGraph()
   })
   .addNode({
     name: 'processHigh',
-    processor: (input: { original: number; category: string }) => 
+    execute: (input: { original: number; category: string }) => 
       `Value ${input.original} is categorized as ${input.category}`
   })
   .addNode({
     name: 'processLow',
-    processor: (input: { original: number; category: string }) => 
+    execute: (input: { original: number; category: string }) => 
       `Value ${input.original} is categorized as ${input.category}`
   })
   .addNode({
     name: 'output',
-    processor: (input: string) => ({ message: input })
+    execute: (input: string) => ({ message: input })
   })
   // Dynamic edge with custom input transformation
   .dynamicEdge('input', ({ output }) => {
@@ -240,19 +240,19 @@ const app = workflow.compile('input', 'output');
 const workflow = createGraph()
   .addNode({
     name: 'input',
-    processor: (input: number) => input
+    execute: (input: number) => input
   })
   .addNode({
     name: 'processEven',
-    processor: (input: number) => `${input} is even`
+    execute: (input: number) => `${input} is even`
   })
   .addNode({
     name: 'processOdd',
-    processor: (input: number) => `${input} is odd`
+    execute: (input: number) => `${input} is odd`
   })
   .addNode({
     name: 'output',
-    processor: (input: string) => input
+    execute: (input: string) => input
   })
   .dynamicEdge('input', ({ output }) => 
     output % 2 === 0 ? 'processEven' : 'processOdd'
@@ -274,7 +274,7 @@ interface UserData {
 const workflow = createGraph()
   .addNode({
     name: 'validate',
-    processor: (input: UserData) => {
+    execute: (input: UserData) => {
       if (!input.name) throw new Error('Name is required');
       if (input.age < 0) throw new Error('Age must be positive');
       return input;
@@ -282,7 +282,7 @@ const workflow = createGraph()
   })
   .addNode({
     name: 'transform',
-    processor: (input: UserData) => ({
+    execute: (input: UserData) => ({
       displayName: input.name.toUpperCase(),
       isAdult: input.age >= 18,
       ageCategory: input.age < 18 ? 'minor' : 'adult'
@@ -322,11 +322,11 @@ test('should run a simple workflow', async () => {
   const workflow = createGraph()
     .addNode({
       name: 'start',
-      processor: (input: number) => input * 2
+      execute: (input: number) => input * 2
     })
     .addNode({
       name: 'end',
-      processor: (input: number) => input + 10
+      execute: (input: number) => input + 10
     })
     .edge('start', 'end');
   
@@ -345,12 +345,12 @@ test('should run a simple workflow', async () => {
 #### `createGraph()`
 Creates a new workflow registry for building workflows.
 
-#### `node({ name, processor })` (Optional)
+#### `node({ name, execute })` (Optional)
 Helper function to pre-define nodes that can be imported from separate files. Useful for organizing complex workflows into smaller parts, but using `addNode()` directly is also fine for most cases.
 
 ### Workflow Methods
 
-#### `addNode({ name, processor })`
+#### `addNode({ name, execute })`
 Adds a node to the workflow directly.
 
 #### `edge(fromNode, toNode)`
@@ -378,7 +378,7 @@ Attaches a hook to a specific node in the workflow. Returns a hook registry.
 
 ### Hook Registry Methods
 
-#### `addNode({ name, processor })`
+#### `addNode({ name, execute })`
 Adds a node to the hook workflow.
 
 #### `edge(fromNode, toNode)`

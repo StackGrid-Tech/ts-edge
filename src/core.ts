@@ -21,7 +21,7 @@ type RegistryContext = {
   nodes: Map<string, Function>;
   routes: Map<string, Function>;
   edges: Map<string, string>;
-  schema: Map<string, ZodType>;
+  parameters: Map<string, ZodType>;
 };
 
 const createGraphRunner = ({
@@ -30,7 +30,7 @@ const createGraphRunner = ({
   edges,
   nodes,
   routes,
-  schema,
+  parameters,
 }: RegistryContext & { start: string; end?: string }): GraphRunner<never> => {
   const eventHandlers: Array<(event: any) => any> = [];
   const hookMap: Map<string, Function[]> = new Map();
@@ -97,7 +97,7 @@ const createGraphRunner = ({
       };
       const process = () => {
         const input = context.node.input;
-        const valid = schema.get(context.node.name);
+        const valid = parameters.get(context.node.name);
         const process = nodes.get(context.node.name)!;
         if (valid) valid.parse(input);
         return process(input);
@@ -248,15 +248,15 @@ const createGraphRunner = ({
 };
 
 const createRegistry = (context: RegistryContext): DefaultRegistry => {
-  const { nodes, routes, edges, schema } = context;
+  const { nodes, routes, edges, parameters } = context;
 
   const registry: DefaultRegistry = {
     addNode(node) {
       if (nodes.has(node.name)) {
         throw new Error(`Node with name "${node.name}" already exists in the graph`);
       }
-      if (node.schema) schema.set(node.name, node.schema);
-      nodes.set(node.name, node.processor);
+      if (node.parameters) parameters.set(node.name, node.parameters);
+      nodes.set(node.name, node.execute);
       return registry;
     },
     edge(from, to) {
@@ -281,17 +281,17 @@ const createHookRegistry = (observer: { subscribe: Function; unsubscribe: Functi
   const nodes: Map<string, Function> = new Map();
   const routes: Map<string, Function> = new Map();
   const edges: Map<string, string> = new Map();
-  const schema: Map<string, ZodType> = new Map();
+  const parameters: Map<string, ZodType> = new Map();
 
   const registry = createRegistry({
     nodes,
     routes,
     edges,
-    schema,
+    parameters,
   });
   const hook: Omit<HookRegistry, keyof DefaultRegistry> = {
     compile(startNode, endNode) {
-      const executor = createGraphRunner({ start: startNode, end: endNode, edges, nodes, routes, schema });
+      const executor = createGraphRunner({ start: startNode, end: endNode, edges, nodes, routes, parameters });
       let handler: Function | undefined;
       return {
         subscribe: executor.subscribe,
@@ -324,13 +324,13 @@ export const createGraph = (): GraphRegistry => {
   const nodes: Map<string, Function> = new Map();
   const routes: Map<string, Function> = new Map();
   const edges: Map<string, string> = new Map();
-  const schema: Map<string, ZodType> = new Map();
+  const parameters: Map<string, ZodType> = new Map();
 
   const registry = createRegistry({
     nodes,
     routes,
     edges,
-    schema,
+    parameters,
   });
   const workflow: Omit<GraphRegistry, keyof DefaultRegistry> = {
     compile(start, end) {
@@ -340,7 +340,7 @@ export const createGraph = (): GraphRegistry => {
         edges: new Map(edges),
         nodes: new Map(nodes),
         routes: new Map(routes),
-        schema: new Map(schema),
+        parameters: new Map(parameters),
       });
     },
   };
@@ -349,7 +349,7 @@ export const createGraph = (): GraphRegistry => {
 
 export const node = <Name extends string = string, Input = any, Output = any>(node: {
   name: Name;
-  processor: (input: Input) => Output;
+  execute: (input: Input) => Output;
 }) => {
   return node;
 };

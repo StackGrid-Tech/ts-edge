@@ -32,13 +32,13 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'start',
-            processor: (input: number) => input * 2,
+            execute: (input: number) => input * 2,
           })
         )
         .addNode(
           node({
             name: 'end',
-            processor: (input: number) => input + 10,
+            execute: (input: number) => input + 10,
           })
         )
         .edge('start', 'end')
@@ -56,7 +56,7 @@ describe('Workflow System', () => {
       const workflow = createGraph().addNode(
         node({
           name: 'start',
-          processor: (input: number) => input * 2,
+          execute: (input: number) => input * 2,
         })
       );
 
@@ -64,7 +64,7 @@ describe('Workflow System', () => {
         workflow.addNode(
           node({
             name: 'start',
-            processor: (input: number) => input * 3,
+            execute: (input: number) => input * 3,
           })
         );
       }).toThrow(/Node with name "start" already exists/);
@@ -77,13 +77,13 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'start',
-            processor: (input: number) => input * 2,
+            execute: (input: number) => input * 2,
           })
         )
         .addNode(
           node({
             name: 'end',
-            processor: (input: number) => input + 10,
+            execute: (input: number) => input + 10,
           })
         )
         .edge('start', 'end')
@@ -98,12 +98,12 @@ describe('Workflow System', () => {
       expect(result.histories[1].node.name).toBe('end');
     });
 
-    test('should handle async node processors', async () => {
+    test('should handle async node executes', async () => {
       const workflow = createGraph()
         .addNode(
           node({
             name: 'start',
-            processor: async (input: number) => {
+            execute: async (input: number) => {
               return new Promise<number>((resolve) => setTimeout(() => resolve(input * 2), 10));
             },
           })
@@ -111,7 +111,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'end',
-            processor: (input: number) => input + 10,
+            execute: (input: number) => input + 10,
           })
         )
         .edge('start', 'end')
@@ -123,12 +123,12 @@ describe('Workflow System', () => {
       expect(result.output).toBe(20); // (5 * 2) + 10
     });
 
-    test('should handle errors in node processors', async () => {
+    test('should handle errors in node executes', async () => {
       const workflow = createGraph()
         .addNode(
           node({
             name: 'start',
-            processor: (input: number) => {
+            execute: (input: number) => {
               if (input < 0) throw new Error('Input must be positive');
               return input * 2;
             },
@@ -137,7 +137,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'end',
-            processor: (input: number) => input + 10,
+            execute: (input: number) => input + 10,
           })
         )
         .edge('start', 'end')
@@ -157,7 +157,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'start',
-            processor: async () => {
+            execute: async () => {
               return new Promise((resolve) => setTimeout(resolve, 100));
             },
           })
@@ -177,7 +177,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'loopNode',
-            processor: (count: number) => count + 1,
+            execute: (count: number) => count + 1,
           })
         )
         .dynamicEdge('loopNode', () => 'loopNode')
@@ -197,13 +197,13 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'nodeA',
-            processor: (input: string) => input.toUpperCase(),
+            execute: (input: string) => input.toUpperCase(),
           })
         )
         .addNode(
           node({
             name: 'nodeB',
-            processor: (input: string) => input + '!',
+            execute: (input: string) => input + '!',
           })
         )
         .edge('nodeA', 'nodeB')
@@ -220,19 +220,19 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'input',
-            processor: (input: number) => input,
+            execute: (input: number) => input,
           })
         )
         .addNode(
           node({
             name: 'evenPath',
-            processor: (input: number) => `${input} is even`,
+            execute: (input: number) => `${input} is even`,
           })
         )
         .addNode(
           node({
             name: 'oddPath',
-            processor: (input: number) => `${input} is odd`,
+            execute: (input: number) => `${input} is odd`,
           })
         )
         .dynamicEdge('input', ({ output }) => {
@@ -254,13 +254,13 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'start',
-            processor: (input: string) => ({ value: input, length: input.length }),
+            execute: (input: string) => ({ value: input, length: input.length }),
           })
         )
         .addNode(
           node({
             name: 'process',
-            processor: (input: { processedValue: string }) => input.processedValue,
+            execute: (input: { processedValue: string }) => input.processedValue,
           })
         )
         .dynamicEdge('start', ({ output }) => ({
@@ -280,19 +280,19 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'nodeA',
-            processor: (input: string) => input,
+            execute: (input: string) => input,
           })
         )
         .addNode(
           node({
             name: 'nodeB',
-            processor: (input: string) => input,
+            execute: (input: string) => input,
           })
         )
         .addNode(
           node({
             name: 'nodeC',
-            processor: (input: string) => input,
+            execute: (input: string) => input,
           })
         )
         .edge('nodeA', 'nodeB');
@@ -309,7 +309,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'process',
-            processor: (input: number) => input * 2,
+            execute: (input: number) => input * 2,
           })
         )
         .compile('process');
@@ -340,7 +340,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'process',
-            processor: (input: number) => input * 2,
+            execute: (input: number) => input * 2,
           })
         )
         .compile('process');
@@ -361,25 +361,25 @@ describe('Workflow System', () => {
     });
   });
 
-  describe('Node Schema Validation', () => {
-    test('should validate input using zod schema', async () => {
-      // Define a schema for user data
-      const userSchema = z.object({
+  describe('Node parameters Validation', () => {
+    test('should validate input using zod parameters', async () => {
+      // Define a parameters for user data
+      const userparameters = z.object({
         name: z.string().min(1, 'Name is required'),
         age: z.number().min(0, 'Age must be positive'),
         email: z.string().email('Invalid email format'),
       });
 
-      // Create a workflow with schema validation
+      // Create a workflow with parameters validation
       const workflow = createGraph()
         .addNode({
           name: 'validateUser',
-          processor: (input) => input, // Simply pass through valid data
-          schema: userSchema, // Add schema for validation
+          execute: (input) => input, // Simply pass through valid data
+          parameters: userparameters, // Add parameters for validation
         })
         .addNode({
           name: 'processUser',
-          processor: (input) => ({
+          execute: (input) => ({
             displayName: input.name.toUpperCase(),
             isAdult: input.age >= 18,
           }),
@@ -435,9 +435,9 @@ describe('Workflow System', () => {
       expect(invalidEmailResult.error?.message).toContain('Invalid email format');
     });
 
-    test('should allow more complex schema validations', async () => {
-      // Define a more complex schema with nested objects and arrays
-      const orderSchema = z.object({
+    test('should allow more complex parameters validations', async () => {
+      // Define a more complex parameters with nested objects and arrays
+      const orderparameters = z.object({
         orderId: z.string().uuid(),
         customer: z.object({
           id: z.number(),
@@ -461,16 +461,16 @@ describe('Workflow System', () => {
         }),
       });
 
-      // Create a workflow with the complex schema
+      // Create a workflow with the complex parameters
       const workflow = createGraph()
         .addNode({
           name: 'validateOrder',
-          processor: (input) => input,
-          schema: orderSchema,
+          execute: (input) => input,
+          parameters: orderparameters,
         })
         .addNode({
           name: 'calculateTotal',
-          processor: (order) => {
+          execute: (order) => {
             const subtotal = order.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
             // Apply discount for premium customers
@@ -539,14 +539,14 @@ describe('Workflow System', () => {
     });
 
     test('should validate input in hooks', async () => {
-      // Define schemas
-      const numberSchema = z.number().positive();
+      // Define parameterss
+      const numberparameters = z.number().positive();
 
       // Create main workflow with validated node
       const workflow = createGraph().addNode({
         name: 'main',
-        processor: (input: number) => input * 2,
-        schema: numberSchema,
+        execute: (input: number) => input * 2,
+        parameters: numberparameters,
       });
 
       const app = workflow.compile('main');
@@ -554,8 +554,8 @@ describe('Workflow System', () => {
       // Create a hook with validated node
       const hook = app.attachHook('main').addNode({
         name: 'hook',
-        processor: (input: number) => `Result: ${input}`,
-        schema: numberSchema, // Same schema as parent
+        execute: (input: number) => `Result: ${input}`,
+        parameters: numberparameters, // Same parameters as parent
       });
 
       const connector = hook.compile('hook');
@@ -597,7 +597,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'main',
-            processor: (input: number) => input * 2,
+            execute: (input: number) => input * 2,
           })
         )
         .compile('main');
@@ -612,7 +612,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'hook',
-            processor: (input: number) => input + 5,
+            execute: (input: number) => input + 5,
           })
         )
         .compile('hook');
@@ -642,7 +642,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'main',
-            processor: (input: number) => input * 2,
+            execute: (input: number) => input * 2,
           })
         )
         .compile('main');
@@ -656,7 +656,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'hook',
-            processor: (input: number) => input + 5,
+            execute: (input: number) => input + 5,
           })
         )
         .compile('hook');
@@ -689,7 +689,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'main',
-            processor: (input: string) => input.toUpperCase(),
+            execute: (input: string) => input.toUpperCase(),
           })
         )
         .compile('main');
@@ -703,13 +703,13 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'hook1',
-            processor: (input: string) => input.toLowerCase(),
+            execute: (input: string) => input.toLowerCase(),
           })
         )
         .addNode(
           node({
             name: 'hook2',
-            processor: (input: string) => `transformed: ${input}`,
+            execute: (input: string) => `transformed: ${input}`,
           })
         )
         .edge('hook1', 'hook2')
@@ -745,13 +745,13 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'input',
-            processor: (input: UserData) => input,
+            execute: (input: UserData) => input,
           })
         )
         .addNode(
           node({
             name: 'validate',
-            processor: (input: UserData) => {
+            execute: (input: UserData) => {
               if (!input.name) throw new Error('Name is required');
               if (input.age < 0) throw new Error('Age must be positive');
               return input;
@@ -761,19 +761,19 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'processMajor',
-            processor: (input: UserData) => `${input.name} is an adult (${input.age})`,
+            execute: (input: UserData) => `${input.name} is an adult (${input.age})`,
           })
         )
         .addNode(
           node({
             name: 'processMinor',
-            processor: (input: UserData) => `${input.name} is a minor (${input.age})`,
+            execute: (input: UserData) => `${input.name} is a minor (${input.age})`,
           })
         )
         .addNode(
           node({
             name: 'output',
-            processor: (input: string) => ({ message: input }),
+            execute: (input: string) => ({ message: input }),
           })
         )
         .edge('input', 'validate')
