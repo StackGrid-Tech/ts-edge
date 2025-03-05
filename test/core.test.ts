@@ -1,6 +1,24 @@
 import { describe, test, expect } from 'vitest';
 import { createGraph, node } from '../src/core';
 import { GraphEvent, GraphResult } from '../src/interfaces';
+import { z } from 'zod';
+
+// Helper function to create a promise-based lock
+const createLock = () => {
+  let resolve: () => void;
+  let promise = Promise.resolve();
+  const lock = () => {
+    promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+  };
+  lock();
+  return {
+    lock,
+    wait: () => promise,
+    unlock: () => resolve?.(),
+  };
+};
 
 const debug = (e) => {
   console.log(e);
@@ -343,24 +361,236 @@ describe('Workflow System', () => {
     });
   });
 
+  describe('Node Schema Validation', () => {
+    test('should validate input using zod schema', async () => {
+      // Define a schema for user data
+      const userSchema = z.object({
+        name: z.string().min(1, 'Name is required'),
+        age: z.number().min(0, 'Age must be positive'),
+        email: z.string().email('Invalid email format'),
+      });
+
+      // Create a workflow with schema validation
+      const workflow = createGraph()
+        .addNode({
+          name: 'validateUser',
+          processor: (input) => input, // Simply pass through valid data
+          schema: userSchema, // Add schema for validation
+        })
+        .addNode({
+          name: 'processUser',
+          processor: (input) => ({
+            displayName: input.name.toUpperCase(),
+            isAdult: input.age >= 18,
+          }),
+        })
+        .edge('validateUser', 'processUser');
+
+      const app = workflow.compile('validateUser', 'processUser');
+
+      // Test with valid data - should pass validation
+      const validResult = await app.run({
+        name: 'John',
+        age: 25,
+        email: 'john@example.com',
+      });
+
+      expect(validResult.isOk).toBe(true);
+      expect(validResult.output).toEqual({
+        displayName: 'JOHN',
+        isAdult: true,
+      });
+
+      // Test with invalid data - missing name
+      const invalidNameResult = await app.run({
+        name: '',
+        age: 30,
+        email: 'test@example.com',
+      });
+
+      expect(invalidNameResult.isOk).toBe(false);
+      expect(invalidNameResult.error).toBeDefined();
+      expect(invalidNameResult.error?.message).toContain('Name is required');
+
+      // Test with invalid data - negative age
+      const invalidAgeResult = await app.run({
+        name: 'Alice',
+        age: -5,
+        email: 'alice@example.com',
+      });
+
+      expect(invalidAgeResult.isOk).toBe(false);
+      expect(invalidAgeResult.error).toBeDefined();
+      expect(invalidAgeResult.error?.message).toContain('Age must be positive');
+
+      // Test with invalid data - wrong email format
+      const invalidEmailResult = await app.run({
+        name: 'Bob',
+        age: 40,
+        email: 'invalid-email',
+      });
+
+      expect(invalidEmailResult.isOk).toBe(false);
+      expect(invalidEmailResult.error).toBeDefined();
+      expect(invalidEmailResult.error?.message).toContain('Invalid email format');
+    });
+
+    test('should allow more complex schema validations', async () => {
+      // Define a more complex schema with nested objects and arrays
+      const orderSchema = z.object({
+        orderId: z.string().uuid(),
+        customer: z.object({
+          id: z.number(),
+          name: z.string(),
+          isPremium: z.boolean().default(false),
+        }),
+        items: z
+          .array(
+            z.object({
+              id: z.number(),
+              name: z.string(),
+              price: z.number().positive(),
+              quantity: z.number().int().positive(),
+            })
+          )
+          .min(1, 'Order must contain at least one item'),
+        shippingAddress: z.object({
+          street: z.string(),
+          city: z.string(),
+          zipCode: z.string(),
+        }),
+      });
+
+      // Create a workflow with the complex schema
+      const workflow = createGraph()
+        .addNode({
+          name: 'validateOrder',
+          processor: (input) => input,
+          schema: orderSchema,
+        })
+        .addNode({
+          name: 'calculateTotal',
+          processor: (order) => {
+            const subtotal = order.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+            // Apply discount for premium customers
+            const discount = order.customer.isPremium ? 0.1 : 0;
+
+            return {
+              orderId: order.orderId,
+              customerName: order.customer.name,
+              subtotal,
+              discount: subtotal * discount,
+              total: subtotal * (1 - discount),
+            };
+          },
+        })
+        .edge('validateOrder', 'calculateTotal');
+
+      const app = workflow.compile('validateOrder', 'calculateTotal');
+
+      // Valid complex data
+      const validOrder = {
+        orderId: '123e4567-e89b-12d3-a456-426614174000',
+        customer: {
+          id: 123,
+          name: 'Jane Doe',
+          isPremium: true,
+        },
+        items: [
+          { id: 1, name: 'Product A', price: 25.99, quantity: 2 },
+          { id: 2, name: 'Product B', price: 10.5, quantity: 1 },
+        ],
+        shippingAddress: {
+          street: '123 Main St',
+          city: 'Anytown',
+          zipCode: '12345',
+        },
+      };
+
+      const validResult = await app.run(validOrder);
+      expect(validResult.isOk).toBe(true);
+      expect(validResult.output).toEqual({
+        orderId: validOrder.orderId,
+        customerName: 'Jane Doe',
+        subtotal: 25.99 * 2 + 10.5,
+        discount: (25.99 * 2 + 10.5) * 0.1,
+        total: (25.99 * 2 + 10.5) * 0.9,
+      });
+
+      // Invalid - missing items
+      const invalidOrder1 = {
+        ...validOrder,
+        items: [],
+      };
+
+      const invalidResult1 = await app.run(invalidOrder1);
+      expect(invalidResult1.isOk).toBe(false);
+      expect(invalidResult1.error?.message).toContain('Order must contain at least one item');
+
+      // Invalid - negative price
+      const invalidOrder2 = {
+        ...validOrder,
+        items: [{ id: 1, name: 'Product A', price: -25.99, quantity: 2 }],
+      };
+
+      const invalidResult2 = await app.run(invalidOrder2);
+      expect(invalidResult2.isOk).toBe(false);
+    });
+
+    test('should validate input in hooks', async () => {
+      // Define schemas
+      const numberSchema = z.number().positive();
+
+      // Create main workflow with validated node
+      const workflow = createGraph().addNode({
+        name: 'main',
+        processor: (input: number) => input * 2,
+        schema: numberSchema,
+      });
+
+      const app = workflow.compile('main');
+
+      // Create a hook with validated node
+      const hook = app.attachHook('main').addNode({
+        name: 'hook',
+        processor: (input: number) => `Result: ${input}`,
+        schema: numberSchema, // Same schema as parent
+      });
+
+      const connector = hook.compile('hook');
+
+      // Setup hook result tracking
+      const lockUtil = createLock();
+      const hookResults: any[] = [];
+      const hookErrors: Error[] = [];
+
+      connector.connect({
+        onResult: (result) => {
+          if (result.isOk) {
+            hookResults.push(result.output);
+          } else {
+            hookErrors.push(result.error);
+          }
+          lockUtil.unlock();
+        },
+      });
+
+      // Test with valid input for both main and hook
+      await app.run(10);
+      await lockUtil.wait();
+      expect(hookResults).toEqual(['Result: 20']);
+
+      // Test with invalid input (should fail at main node)
+      const invalidResult = await app.run(-5);
+      expect(invalidResult.isOk).toBe(false);
+
+      // Hook shouldn't execute since main failed
+      expect(hookResults.length).toBe(1);
+    });
+  });
+
   describe('Hooks', () => {
-    // Helper function to create a promise-based lock
-    const createLock = () => {
-      let resolve: () => void;
-      let promise = Promise.resolve();
-      const lock = () => {
-        promise = new Promise<void>((r) => {
-          resolve = r;
-        });
-      };
-
-      return {
-        lock,
-        wait: () => promise,
-        unlock: () => resolve?.(),
-      };
-    };
-
     test('should attach and execute hooks', async () => {
       // Create the main workflow
       const workflow = createGraph()

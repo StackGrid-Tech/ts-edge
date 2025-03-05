@@ -1,3 +1,5 @@
+import type { ZodType } from 'zod';
+
 /**
  * Represents a node in the workflow with a name, input, and output.
  * @template Name - The node name type
@@ -396,6 +398,7 @@ export interface DefaultRegistry<T extends Node = never, Connected extends strin
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
     processor: (input: Input) => Output;
+    schema?: ZodType<Input>;
   });
 
   /**
@@ -463,6 +466,7 @@ export interface GraphRegistry<T extends Node = never, Connected extends string 
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
     processor: (input: Input) => Output;
+    schema?: ZodType<Input>;
   }): GraphRegistry<T | Node<Name, Input, Output>, Connected>;
 
   /**
@@ -549,6 +553,7 @@ export interface HookRegistry<
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
     processor: (input: Input) => Output;
+    schema?: ZodType<Input>;
   }): HookRegistry<T | Node<Name, Input, Output>, Connected, EntryPointNode>;
 
   /**
