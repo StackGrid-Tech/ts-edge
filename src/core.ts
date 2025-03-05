@@ -7,31 +7,35 @@ import type {
   NodeContext,
   DefaultRegistry,
   GraphRegistry,
-  GraphRunner,
+  GraphRunable,
   HookRegistry,
   NodeHistory,
   GraphStartEvent,
   GraphEndEvent,
   GraphResult,
   GraphEvent,
+  Node,
+  NodeRouter,
+  NodeType,
 } from './interfaces';
-import { ZodType } from 'zod';
 
 type RegistryContext = {
-  nodes: Map<string, Function>;
-  routes: Map<string, Function>;
+  nodes: Map<
+    string,
+    {
+      type: 'router' | 'executor';
+      execute: Function;
+    }
+  >;
   edges: Map<string, string>;
-  parameters: Map<string, ZodType>;
 };
 
-const createGraphRunner = ({
+const createGraphRunable = ({
   start,
   end,
   edges,
   nodes,
-  routes,
-  parameters,
-}: RegistryContext & { start: string; end?: string }): GraphRunner<never> => {
+}: RegistryContext & { start: string; end?: string }): GraphRunable<never> => {
   const eventHandlers: Array<(event: any) => any> = [];
   const hookMap: Map<string, Function[]> = new Map();
   const pubsup = {
@@ -56,12 +60,17 @@ const createGraphRunner = ({
     }
   });
 
-  const app: GraphRunner = {
+  const app: GraphRunable = {
     getStructure() {
       return {
-        edges: new Map(edges),
-        nodes: new Map(nodes),
-        routes: new Map(routes),
+        nodes: Array.from(nodes.entries()).reduce(
+          (prev, [name, { type }]) => Object.assign(prev, { [name]: type }),
+          {} as Record<string, NodeType>
+        ),
+        edges: Array.from(edges.entries()).reduce(
+          (prev, [from, to]) => Object.assign(prev, { [from]: to }),
+          {} as Record<string, string>
+        ),
       };
     },
     run(input, options) {
@@ -75,32 +84,30 @@ const createGraphRunner = ({
 
       const context: NodeContext = {
         histories: [],
+        type: 'executor',
         node: {
           name: start,
           input: input,
         },
         timestamp: Date.now(),
-        next: {
-          name: undefined,
-          input: undefined,
-        },
       };
+
       const nodeStart = () => {
         const now = Date.now();
+        context.type = nodes.get(context.node.name)!.type;
         context.timestamp = now;
         pubsup.publish({
           executionId,
           eventType: 'NODE_START',
           startedAt: now,
           node: { ...context.node },
+          type: context.type,
         } as NodeStartEvent);
       };
       const process = () => {
         const input = context.node.input;
-        const valid = parameters.get(context.node.name);
-        const process = nodes.get(context.node.name)!;
-        if (valid) valid.parse(input);
-        return process(input);
+        const node = nodes.get(context.node.name)!;
+        return node.execute(input);
       };
 
       const updateOutput = (output: any) => {
@@ -108,34 +115,27 @@ const createGraphRunner = ({
       };
 
       const findNextNode = () => {
-        return safe(context.node)
-          .map((node): { name?: string; input: any } => {
-            const next = { name: end as string | undefined, input: node.output };
-            if (end === node.name) {
-              next.name = undefined;
-            } else if (edges.has(node.name)) {
-              next.name = edges.get(node.name)!;
-            } else if (routes.has(node.name)) {
-              const router = routes.get(node.name)!;
-              return safe()
-                .map(() => router(node))
-                .map((v) => {
-                  if (v?.name) return v;
-                  if (typeof v == 'string') return { name: v, input: node.output! };
-                  return {};
-                })
-                .unwrap();
-            }
-            return next;
-          })
-          .effect((next) => {
-            // Verify the next node exists if specified
-            if (next.name && !nodes.has(next.name)) {
-              throw new Error(`Next node "${next.name}" not found in the graph`);
-            }
-            context.next = next;
-          })
-          .unwrap();
+        let next: string | undefined = undefined;
+        if (end != undefined && end === context.node.name) {
+          next = undefined;
+        } else if (context.type == 'router') {
+          next = !context.node.output
+            ? undefined
+            : typeof context.node.output == 'string'
+              ? context.node.output
+              : context.node.output.name;
+        } else {
+          next = edges.get(context.node.name);
+        }
+
+        if (next != undefined && !nodes.has(next)) {
+          throw new Error(`Next node "${next}" not found in the graph`);
+        }
+
+        if (context.type == 'router' && nodes.get(next!)?.type == 'router')
+          throw new Error('Can Not Router Node To Router Node');
+
+        context.next = next;
       };
 
       const nodeEnd = (result: SafeResult) => {
@@ -143,7 +143,7 @@ const createGraphRunner = ({
           startedAt: context.timestamp,
           endedAt: Date.now(),
           error: result.error,
-          nextNode: context.next,
+          type: context.type,
           isOk: result.isOk,
           node: { ...context.node },
         } as NodeHistory;
@@ -163,12 +163,23 @@ const createGraphRunner = ({
           .effect(findNextNode) // Determine next node
           .watch(nodeEnd) // Emit node end event
           .map((output) => {
-            // If there's a next node, update context and continue execution
-            if (!context.next.name) return output;
-            context.node.name = context.next.name;
-            context.node.input = context.next.input;
+            if (!context.next) return output;
+            const nextNode = nodes.get(context.next)!;
+            if (nextNode.type == 'router') {
+              context.node.input = { ...context.node };
+            } else if (context.type == 'router') {
+              context.node.input = !context.node.output
+                ? undefined
+                : typeof context.node.output == 'string'
+                  ? context.node.input.output
+                  : { ...context.node.output.input };
+            } else {
+              context.node.input = context.node.output;
+            }
+
+            context.node.name = context.next;
             context.node.output = undefined;
-            context.next = {};
+            context.next = undefined;
             if (--opt.maxNodeVisits <= 0) throw new Error('Execution aborted: Maximum node visit count exceeded');
             return runNode().unwrap(); // Recursively execute the next node
           });
@@ -240,58 +251,65 @@ const createGraphRunner = ({
           );
         },
       };
-      return createHookRegistry(observer) as HookRegistry;
+      return createHook(observer) as HookRegistry;
     },
   };
 
   return app;
 };
 
-const createRegistry = (context: RegistryContext): DefaultRegistry => {
-  const { nodes, routes, edges, parameters } = context;
-
+const createRegistry = ({ edges = new Map(), nodes = new Map() }: RegistryContext): DefaultRegistry => {
   const registry: DefaultRegistry = {
     addNode(node) {
+      if (!node.name) throw new Error('Node Name Can Not Be Null');
       if (nodes.has(node.name)) {
         throw new Error(`Node with name "${node.name}" already exists in the graph`);
       }
-      if (node.parameters) parameters.set(node.name, node.parameters);
-      nodes.set(node.name, node.execute);
+      nodes.set(node.name, {
+        execute: (value: unknown) => {
+          let input = value;
+          if (node.parameters) {
+            input = node.parameters.parse(value);
+          }
+          return node.execute(input);
+        },
+        type: 'executor',
+      });
+      return registry;
+    },
+    addRouterNode(routerNode) {
+      if (!routerNode.name) throw new Error('Node Name Can Not Be Null');
+      if (nodes.has(routerNode.name)) {
+        throw new Error(`Node with name "${routerNode.name}" already exists in the graph`);
+      }
+      nodes.set(routerNode.name, {
+        execute: routerNode.router,
+        type: 'router',
+      });
       return registry;
     },
     edge(from, to) {
-      if (edges.has(from) || routes.has(from)) {
+      if (edges.has(from)) {
         throw new Error(`Node "${from}" already has an outgoing connection`);
       }
-      edges.set(from, to);
-      return registry;
-    },
-    dynamicEdge(from, router) {
-      if (edges.has(from) || routes.has(from)) {
-        throw new Error(`Node "${from}" already has an outgoing connection`);
-      }
-      routes.set(from, router);
+      edges.set(from, to!);
       return registry;
     },
   };
   return registry;
 };
 
-const createHookRegistry = (observer: { subscribe: Function; unsubscribe: Function }): HookRegistry => {
-  const nodes: Map<string, Function> = new Map();
-  const routes: Map<string, Function> = new Map();
-  const edges: Map<string, string> = new Map();
-  const parameters: Map<string, ZodType> = new Map();
+const createHook = (observer: { subscribe: Function; unsubscribe: Function }): HookRegistry => {
+  const nodes: RegistryContext['nodes'] = new Map();
+  const edges: RegistryContext['edges'] = new Map();
 
   const registry = createRegistry({
     nodes,
-    routes,
     edges,
-    parameters,
   });
   const hook: Omit<HookRegistry, keyof DefaultRegistry> = {
     compile(startNode, endNode) {
-      const executor = createGraphRunner({ start: startNode, end: endNode, edges, nodes, routes, parameters });
+      const executor = createGraphRunable({ start: startNode, end: endNode, edges, nodes });
       let handler: Function | undefined;
       return {
         subscribe: executor.subscribe,
@@ -321,26 +339,20 @@ const createHookRegistry = (observer: { subscribe: Function; unsubscribe: Functi
 };
 
 export const createGraph = (): GraphRegistry => {
-  const nodes: Map<string, Function> = new Map();
-  const routes: Map<string, Function> = new Map();
-  const edges: Map<string, string> = new Map();
-  const parameters: Map<string, ZodType> = new Map();
+  const nodes: RegistryContext['nodes'] = new Map();
+  const edges: RegistryContext['edges'] = new Map();
 
   const registry = createRegistry({
     nodes,
-    routes,
     edges,
-    parameters,
   });
   const workflow: Omit<GraphRegistry, keyof DefaultRegistry> = {
     compile(start, end) {
-      return createGraphRunner({
+      return createGraphRunable({
         start,
         end,
         edges: new Map(edges),
         nodes: new Map(nodes),
-        routes: new Map(routes),
-        parameters: new Map(parameters),
       });
     },
   };
@@ -352,4 +364,25 @@ export const node = <Name extends string = string, Input = any, Output = any>(no
   execute: (input: Input) => Output;
 }) => {
   return node;
+};
+
+export namespace node {
+  export type infer<T extends ReturnType<typeof node>> = T extends {
+    name: infer N;
+    execute: (input: infer I) => infer O;
+  }
+    ? { name: N; input: I; output: O extends PromiseLike<any> ? Awaited<O> : O }
+    : never;
+}
+
+export const routerNode = <
+  Name extends string = string,
+  AllNode extends Node = Node<string, any, any>,
+  FromNodeName extends AllNode['name'] = string,
+  ToNodeName extends AllNode['name'] = string,
+>(router: {
+  name: Name;
+  router: NodeRouter<AllNode, FromNodeName, ToNodeName>;
+}) => {
+  return router;
 };

@@ -1,4 +1,4 @@
-import { createGraph, node } from './core';
+import { createGraph, routerNode, node } from './core';
 export type {
   NodeHistory,
   GraphEvent,
@@ -6,11 +6,12 @@ export type {
   GraphStartEvent,
   GraphStructure,
   GraphResult,
-  GraphRunner,
+  GraphRunable,
   GraphRegistry,
   HookRegistry,
   DefaultRegistry,
-  HookConnector,
+  HookRunable,
+  Node,
 } from './interfaces';
 
-export { createGraph, node };
+export { createGraph, node, routerNode };

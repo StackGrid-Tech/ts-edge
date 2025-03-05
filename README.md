@@ -89,12 +89,12 @@ Edges connect nodes together, defining the flow of data through your workflow:
 workflow.edge('nodeA', 'nodeB');
 
 // Dynamic edge that returns just the next node name
-workflow.dynamicEdge('nodeA', ({ output }) => {
+workflow.conditionalEdge('nodeA', ({ output }) => {
   return output > 10 ? 'largeValueNode' : 'smallValueNode';
 });
 
 // Dynamic edge that customizes the input for the next node
-workflow.dynamicEdge('nodeA', ({ output }) => {
+workflow.conditionalEdge('nodeA', ({ output }) => {
   return {
     name: 'processingNode',
     input: { 
@@ -216,7 +216,7 @@ const workflow = createGraph()
     execute: (input: string) => ({ message: input })
   })
   // Dynamic edge with custom input transformation
-  .dynamicEdge('input', ({ output }) => {
+  .conditionalEdge('input', ({ output }) => {
     const category = output.value > 50 ? 'high' : 'low';
     const targetNode = output.value > 50 ? 'processHigh' : 'processLow';
     
@@ -254,7 +254,7 @@ const workflow = createGraph()
     name: 'output',
     execute: (input: string) => input
   })
-  .dynamicEdge('input', ({ output }) => 
+  .conditionalEdge('input', ({ output }) => 
     output % 2 === 0 ? 'processEven' : 'processOdd'
   )
   .edge('processEven', 'output')
@@ -356,7 +356,7 @@ Adds a node to the workflow directly.
 #### `edge(fromNode, toNode)`
 Creates a static edge between two nodes.
 
-#### `dynamicEdge(fromNode, routerFunction)`
+#### `conditionalEdge(fromNode, routerFunction)`
 Creates a dynamic edge using a router function. The router can return a node name or an object with `{ name, input }`.
 
 #### `compile(startNode, endNode?)`
@@ -384,7 +384,7 @@ Adds a node to the hook workflow.
 #### `edge(fromNode, toNode)`
 Creates a static edge between two nodes in the hook workflow.
 
-#### `dynamicEdge(fromNode, routerFunction)`
+#### `conditionalEdge(fromNode, routerFunction)`
 Creates a dynamic edge in the hook workflow.
 
 #### `compile(startNode, endNode?)`
