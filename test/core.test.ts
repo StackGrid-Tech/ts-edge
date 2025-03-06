@@ -38,7 +38,7 @@ describe('Workflow System', () => {
         .addNode(
           node({
             name: 'end',
-            execute: (input: number) => String(input + 10),
+            execute: (input: number) => input + 10,
           })
         )
         .edge('start', 'end')
@@ -47,9 +47,9 @@ describe('Workflow System', () => {
       expect(workflow).toBeDefined();
 
       const structure = workflow.getStructure();
-      expect(structure.nodes.start).toBe('executor');
-      expect(structure.nodes.end).toBe('executor');
-      expect(structure.edges.start).toBe('end');
+      expect(structure.nodes.has('start')).toBe(true);
+      expect(structure.nodes.has('end')).toBe(true);
+      expect(structure.edges.get('start')).toBe('end');
     });
 
     test('should throw an error when adding a node with duplicate name', () => {
@@ -88,8 +88,9 @@ describe('Workflow System', () => {
         )
         .edge('start', 'end')
         .compile('start', 'end');
-      workflow.subscribe(debug);
+
       const result = await workflow.run(5);
+
       expect(result.isOk).toBe(true);
       expect(result.output).toBe(20); // (5 * 2) + 10
       expect(result.histories.length).toBe(2);
@@ -179,11 +180,7 @@ describe('Workflow System', () => {
             execute: (count: number) => count + 1,
           })
         )
-        .addRouterNode({
-          name: 'router',
-          router: () => 'loopNode',
-        })
-        .edge('loopNode', 'router')
+        .dynamicEdge('loopNode', () => 'loopNode')
         .compile('loopNode');
 
       const result = await workflow.run(0, { maxNodeVisits: 5 });
@@ -238,13 +235,9 @@ describe('Workflow System', () => {
             execute: (input: number) => `${input} is odd`,
           })
         )
-        .addRouterNode({
-          name: 'router',
-          router: ({ name, output }) => {
-            if (name == 'input') return output % 2 === 0 ? 'evenPath' : 'oddPath';
-          },
+        .dynamicEdge('input', ({ output }) => {
+          return output % 2 === 0 ? 'evenPath' : 'oddPath';
         })
-        .edge('input', 'router')
         .compile('input');
 
       const evenResult = await workflow.run(2);
@@ -270,18 +263,10 @@ describe('Workflow System', () => {
             execute: (input: { processedValue: string }) => input.processedValue,
           })
         )
-        .addRouterNode({
-          name: 'router',
-          router: ({ name, output }) => {
-            if (name == 'start')
-              return {
-                name: 'process',
-                input: { processedValue: `Processed: ${output.value} (${output.length})` },
-              };
-          },
-        })
-        .edge('start', 'router')
-
+        .dynamicEdge('start', ({ output }) => ({
+          name: 'process',
+          input: { processedValue: `Processed: ${output.value} (${output.length})` },
+        }))
         .compile('start');
 
       const result = await workflow.run('hello');
@@ -622,7 +607,7 @@ describe('Workflow System', () => {
       const hookResults: GraphResult<any>[] = [];
 
       // Create a hook using the attachHook method from the compiled workflow
-      const HookRunable = workflow
+      const hookConnector = workflow
         .attachHook('main')
         .addNode(
           node({
@@ -633,7 +618,7 @@ describe('Workflow System', () => {
         .compile('hook');
 
       // Connect the hook with result handler
-      HookRunable.connect({
+      hookConnector.connect({
         onResult: (result) => {
           hookResults.push(result);
           lockUtil.unlock(); // Unlock when hook execution completes
@@ -666,7 +651,7 @@ describe('Workflow System', () => {
       const hookResults: GraphResult<any>[] = [];
 
       // Attach a hook to the compiled workflow
-      const HookRunable = workflow
+      const hookConnector = workflow
         .attachHook('main')
         .addNode(
           node({
@@ -677,7 +662,7 @@ describe('Workflow System', () => {
         .compile('hook');
 
       // Connect the hook with result handler
-      HookRunable.connect({
+      hookConnector.connect({
         onResult: (result) => {
           hookResults.push(result);
           lockUtil.unlock();
@@ -690,7 +675,7 @@ describe('Workflow System', () => {
       expect(hookResults.length).toBe(1);
 
       // Disconnect the hook
-      HookRunable.disconnect();
+      hookConnector.disconnect();
       // Run the workflow again
       await workflow.run(10);
 
@@ -713,7 +698,7 @@ describe('Workflow System', () => {
       let hookOutput: string | undefined;
 
       // Attach a multi-node hook to the compiled workflow
-      const HookRunable = workflow
+      const hookConnector = workflow
         .attachHook('main')
         .addNode(
           node({
@@ -731,7 +716,7 @@ describe('Workflow System', () => {
         .compile('hook1', 'hook2');
 
       // Connect the hook with result handler
-      HookRunable.connect({
+      hookConnector.connect({
         onResult: (result) => {
           if (result.isOk) {
             hookOutput = result.output;
@@ -791,14 +776,10 @@ describe('Workflow System', () => {
             execute: (input: string) => ({ message: input }),
           })
         )
-        .addRouterNode({
-          name: 'router',
-          router: ({ name, output }) => {
-            if (name == 'validate') return output.age >= 18 ? 'processMajor' : 'processMinor';
-          },
-        })
         .edge('input', 'validate')
-        .edge('validate', 'router')
+        .dynamicEdge('validate', ({ output }) => {
+          return output.age >= 18 ? 'processMajor' : 'processMinor';
+        })
         .edge('processMajor', 'output')
         .edge('processMinor', 'output')
         .compile('input', 'output');
