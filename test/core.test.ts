@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { createGraph, node } from '../src/core';
+import { createGraph, node, nodeRouter } from '../src/core';
 import { GraphEvent, GraphResult } from '../src/interfaces';
 import { z } from 'zod';
 
@@ -47,9 +47,10 @@ describe('Workflow System', () => {
       expect(workflow).toBeDefined();
 
       const structure = workflow.getStructure();
-      expect(structure.nodes.has('start')).toBe(true);
-      expect(structure.nodes.has('end')).toBe(true);
-      expect(structure.edges.get('start')).toBe('end');
+
+      expect(structure.some((node) => node.name == 'start')).toBe(true);
+      expect(structure.some((node) => node.name == 'end')).toBe(true);
+      expect(structure.find((node) => node.name == 'start')?.edge).toEqual({ name: 'end', type: 'direct' });
     });
 
     test('should throw an error when adding a node with duplicate name', () => {
@@ -173,6 +174,10 @@ describe('Workflow System', () => {
 
     test('should respect maxNodeVisits option', async () => {
       // Create a workflow with an infinite loop
+
+      const router = nodeRouter(() => {
+        return 'loopNode';
+      });
       const workflow = createGraph()
         .addNode(
           node({
@@ -180,7 +185,7 @@ describe('Workflow System', () => {
             execute: (count: number) => count + 1,
           })
         )
-        .dynamicEdge('loopNode', () => 'loopNode')
+        .dynamicEdge('loopNode', router)
         .compile('loopNode');
 
       const result = await workflow.run(0, { maxNodeVisits: 5 });
@@ -194,12 +199,10 @@ describe('Workflow System', () => {
   describe('Edge Connections', () => {
     test('should support static edge connections', async () => {
       const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'nodeA',
-            execute: (input: string) => input.toUpperCase(),
-          })
-        )
+        .addNode({
+          name: 'nodeA',
+          execute: (input: string) => input.toUpperCase(),
+        })
         .addNode(
           node({
             name: 'nodeB',
@@ -389,12 +392,15 @@ describe('Workflow System', () => {
       const app = workflow.compile('validateUser', 'processUser');
 
       // Test with valid data - should pass validation
-      const validResult = await app.run({
-        name: 'John',
-        age: 25,
-        email: 'john@example.com',
-      });
-
+      const validResult = await app.run(
+        {
+          name: 'John',
+          age: 25,
+          email: 'john@example.com',
+        },
+        { maxNodeVisits: 4 }
+      );
+      console.log(validResult.error);
       expect(validResult.isOk).toBe(true);
       expect(validResult.output).toEqual({
         displayName: 'JOHN',

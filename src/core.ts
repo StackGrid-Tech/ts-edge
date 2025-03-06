@@ -7,45 +7,49 @@ import type {
   NodeContext,
   DefaultRegistry,
   GraphRegistry,
-  GraphRunner,
+  GraphRunnable,
   HookRegistry,
   NodeHistory,
   GraphStartEvent,
   GraphEndEvent,
   GraphResult,
   GraphEvent,
+  DefaultRunable,
+  GraphStructure,
+  HookRunable,
+  Node,
+  NodeRouter,
 } from './interfaces';
-import { ZodType } from 'zod';
 
-type RegistryContext = {
-  nodes: Map<string, Function>;
-  routes: Map<string, Function>;
-  edges: Map<string, string>;
-  parameters: Map<string, ZodType>;
-};
+type RegistryContext = Map<
+  string,
+  {
+    execute: Function;
+    edge?:
+      | {
+          type: 'direct';
+          next: string;
+        }
+      | {
+          type: 'dynamic';
+          next: Function;
+        };
+  }
+>;
 
-const createGraphRunner = ({
-  start,
-  end,
-  edges,
-  nodes,
-  routes,
-  parameters,
-}: RegistryContext & { start: string; end?: string }): GraphRunner<never> => {
+const createRunnable = (context: RegistryContext): DefaultRunable & { publish: (event: any) => void } => {
   const eventHandlers: Array<(event: any) => any> = [];
   const hookMap: Map<string, Function[]> = new Map();
   const pubsup = {
+    publish(e) {
+      eventHandlers.forEach(async (h) => h(e));
+    },
     subscribe(handler) {
       eventHandlers.push(handler);
     },
     unsubscribe(handler) {
       const index = eventHandlers.findIndex((v) => v === handler);
       if (index !== -1) eventHandlers.splice(index, 1);
-    },
-    publish(event: GraphEvent) {
-      // Using async to run each handler independently
-      // This ensures that errors in one handler won't affect the execution of others
-      eventHandlers.forEach(async (handler) => handler(event));
     },
   };
 
@@ -56,29 +60,65 @@ const createGraphRunner = ({
     }
   });
 
-  const app: GraphRunner = {
+  const app: DefaultRunable & { publish: (event: any) => void } = {
     getStructure() {
-      return {
-        edges: new Map(edges),
-        nodes: new Map(nodes),
-        routes: new Map(routes),
-      };
+      return Array.from(context.entries()).map(([name, item]) => ({
+        name,
+        edge: item.edge
+          ? {
+              name: item.edge.type == 'direct' ? item.edge.next : undefined,
+              type: item.edge.type,
+            }
+          : undefined,
+      })) as GraphStructure;
     },
+    subscribe(handler) {
+      pubsup.subscribe(handler);
+    },
+    unsubscribe(handler) {
+      pubsup.unsubscribe(handler);
+    },
+    attachHook(entryPoint) {
+      const observer = {
+        subscribe: (hook) => hookMap.set(entryPoint, [...(hookMap.get(entryPoint) ?? []), hook]),
+        unsubscribe: (hook) => {
+          hookMap.set(
+            entryPoint,
+            [...(hookMap.get(entryPoint) ?? [])].filter((h) => h != hook)
+          );
+        },
+      };
+      return createHookRegistry(observer) as HookRegistry;
+    },
+    publish(e) {
+      pubsup.publish(e);
+    },
+  };
+
+  return app;
+};
+
+const createGraphRunnable = ({
+  start,
+  end,
+  resigry,
+}: {
+  resigry: RegistryContext;
+  start: string;
+  end?: string;
+}): GraphRunnable<never> => {
+  const { publish, ...runable } = createRunnable(resigry);
+
+  const runner: Omit<GraphRunnable, keyof DefaultRunable> = {
     run(input, options) {
       const opt: RunOptions = { timeout: 600000, maxNodeVisits: 100, ...(options as any) };
-      if (!nodes.has(start as string)) {
-        throw new Error(`Start node "${start}" not found in the graph`);
-      }
-
       const executionId = randomId();
       const startedAt = Date.now();
 
       const context: NodeContext = {
         histories: [],
-        node: {
-          name: start,
-          input: input,
-        },
+        name: start,
+        input: input,
         timestamp: Date.now(),
         next: {
           name: undefined,
@@ -88,51 +128,45 @@ const createGraphRunner = ({
       const nodeStart = () => {
         const now = Date.now();
         context.timestamp = now;
-        pubsup.publish({
+        publish({
           executionId,
           eventType: 'NODE_START',
           startedAt: now,
-          node: { ...context.node },
+          node: { name: context.name, input: context.input },
         } as NodeStartEvent);
       };
       const process = () => {
-        const input = context.node.input;
-        const valid = parameters.get(context.node.name);
-        const process = nodes.get(context.node.name)!;
-        if (valid) valid.parse(input);
-        return process(input);
+        const input = context.input;
+        const executor = resigry.get(context.name)!;
+        return executor.execute(input);
       };
-
       const updateOutput = (output: any) => {
-        context.node.output = output;
+        context.output = output;
       };
 
       const findNextNode = () => {
-        return safe(context.node)
-          .map((node): { name?: string; input: any } => {
-            const next = { name: end as string | undefined, input: node.output };
-            if (end === node.name) {
-              next.name = undefined;
-            } else if (edges.has(node.name)) {
-              next.name = edges.get(node.name)!;
-            } else if (routes.has(node.name)) {
-              const router = routes.get(node.name)!;
-              return safe()
-                .map(() => router(node))
-                .map((v) => {
-                  if (v?.name) return v;
-                  if (typeof v == 'string') return { name: v, input: node.output! };
-                  return {};
-                })
-                .unwrap();
+        return safe()
+          .map((): NodeContext['next'] | undefined => {
+            const currentNode = resigry.get(context.name)!;
+            if ((end != undefined && context.name == end) || currentNode.edge == undefined) return;
+
+            if (currentNode.edge.type == 'direct') {
+              return {
+                input: context.output,
+                name: currentNode.edge.next,
+              };
             }
-            return next;
+            const router = currentNode.edge.next;
+            return router({ name: context.name, input: context.input, output: context.output });
+          })
+          .map((result) => {
+            if (result == undefined) return {};
+            if (typeof result == 'string') return { name: result, input: context.output };
+            return { name: result.name, input: result.input };
           })
           .effect((next) => {
-            // Verify the next node exists if specified
-            if (next.name && !nodes.has(next.name)) {
+            if (next.name && !resigry.has(next.name))
               throw new Error(`Next node "${next.name}" not found in the graph`);
-            }
             context.next = next;
           })
           .unwrap();
@@ -143,13 +177,15 @@ const createGraphRunner = ({
           startedAt: context.timestamp,
           endedAt: Date.now(),
           error: result.error,
-          nextNode: context.next,
+          node: {
+            input: context.input,
+            name: context.name,
+            output: context.output,
+          },
           isOk: result.isOk,
-          node: { ...context.node },
         } as NodeHistory;
-
         context.histories.push(history);
-        pubsup.publish({
+        publish({
           eventType: 'NODE_END',
           executionId,
           ...history,
@@ -164,10 +200,10 @@ const createGraphRunner = ({
           .watch(nodeEnd) // Emit node end event
           .map((output) => {
             // If there's a next node, update context and continue execution
-            if (!context.next.name) return output;
-            context.node.name = context.next.name;
-            context.node.input = context.next.input;
-            context.node.output = undefined;
+            if (!context.next?.name) return output;
+            context.name = context.next.name;
+            context.input = context.next.input;
+            context.output = undefined;
             context.next = {};
             if (--opt.maxNodeVisits <= 0) throw new Error('Execution aborted: Maximum node visit count exceeded');
             return runNode().unwrap(); // Recursively execute the next node
@@ -176,7 +212,7 @@ const createGraphRunner = ({
       };
 
       const emitGraphStartMessage = () => {
-        pubsup.publish({
+        publish({
           eventType: 'WORKFLOW_START',
           executionId,
           startedAt,
@@ -185,7 +221,7 @@ const createGraphRunner = ({
       };
 
       const emitGraphEndMessage = (result: SafeResult) => {
-        pubsup.publish({
+        publish({
           eventType: 'WORKFLOW_END',
           executionId,
           startedAt,
@@ -224,53 +260,49 @@ const createGraphRunner = ({
         .catch((error) => toResult(false, error))
         .unwrap();
     },
-    subscribe(handler) {
-      pubsup.subscribe(handler);
-    },
-    unsubscribe(handler) {
-      pubsup.unsubscribe(handler);
-    },
-    attachHook(entryPoint) {
-      const observer = {
-        subscribe: (hook) => hookMap.set(entryPoint, [...(hookMap.get(entryPoint) ?? []), hook]),
-        unsubscribe: (hook) => {
-          hookMap.set(
-            entryPoint,
-            [...(hookMap.get(entryPoint) ?? [])].filter((h) => h != hook)
-          );
-        },
-      };
-      return createHookRegistry(observer) as HookRegistry;
-    },
   };
 
-  return app;
+  return Object.assign(runable, runner);
 };
 
-const createRegistry = (context: RegistryContext): DefaultRegistry => {
-  const { nodes, routes, edges, parameters } = context;
-
+const createRegistry = (context: RegistryContext = new Map()): DefaultRegistry => {
   const registry: DefaultRegistry = {
     addNode(node) {
-      if (nodes.has(node.name)) {
+      if (context.has(node.name)) {
         throw new Error(`Node with name "${node.name}" already exists in the graph`);
       }
-      if (node.parameters) parameters.set(node.name, node.parameters);
-      nodes.set(node.name, node.execute);
+      const execute = node.parameters ? (input) => node.execute(node.parameters!.parse(input)) : node.execute;
+      context.set(node.name, {
+        execute,
+      });
       return registry;
     },
     edge(from, to) {
-      if (edges.has(from) || routes.has(from)) {
+      const node = context.get(from);
+      if (!node) {
+        throw new Error(`Node "${from}" not Define`);
+      }
+      if (node.edge) {
         throw new Error(`Node "${from}" already has an outgoing connection`);
       }
-      edges.set(from, to);
+      node.edge = {
+        type: 'direct',
+        next: to,
+      };
       return registry;
     },
     dynamicEdge(from, router) {
-      if (edges.has(from) || routes.has(from)) {
+      const node = context.get(from);
+      if (!node) {
+        throw new Error(`Node "${from}" not Define`);
+      }
+      if (node.edge) {
         throw new Error(`Node "${from}" already has an outgoing connection`);
       }
-      routes.set(from, router);
+      node.edge = {
+        type: 'dynamic',
+        next: router,
+      };
       return registry;
     },
   };
@@ -278,34 +310,20 @@ const createRegistry = (context: RegistryContext): DefaultRegistry => {
 };
 
 const createHookRegistry = (observer: { subscribe: Function; unsubscribe: Function }): HookRegistry => {
-  const nodes: Map<string, Function> = new Map();
-  const routes: Map<string, Function> = new Map();
-  const edges: Map<string, string> = new Map();
-  const parameters: Map<string, ZodType> = new Map();
+  const context: RegistryContext = new Map();
+  const registry = createRegistry(context);
 
-  const registry = createRegistry({
-    nodes,
-    routes,
-    edges,
-    parameters,
-  });
   const hook: Omit<HookRegistry, keyof DefaultRegistry> = {
-    compile(startNode, endNode) {
-      const executor = createGraphRunner({ start: startNode, end: endNode, edges, nodes, routes, parameters });
+    compile(start, end) {
+      const { run, ...rest } = createGraphRunnable({ start, end, resigry: context });
       let handler: Function | undefined;
-      return {
-        subscribe: executor.subscribe,
-        unsubscribe: executor.unsubscribe,
-        getStructure: executor.getStructure,
-        attachHook: executor.attachHook,
+      return Object.assign(rest, {
         connect(options) {
           handler = (output) => {
-            executor
-              .run(output as never, {
-                maxNodeVisits: options?.maxNodeVisits,
-                timeout: options?.timeout,
-              })
-              .then(options?.onResult);
+            run(output as never, {
+              maxNodeVisits: options?.maxNodeVisits,
+              timeout: options?.timeout,
+            }).then(options?.onResult);
           };
           observer.subscribe(handler);
         },
@@ -313,7 +331,7 @@ const createHookRegistry = (observer: { subscribe: Function; unsubscribe: Functi
           if (handler) observer.unsubscribe(handler);
           handler = undefined;
         },
-      };
+      } as Omit<HookRunable, keyof DefaultRunable>);
     },
   };
 
@@ -321,26 +339,16 @@ const createHookRegistry = (observer: { subscribe: Function; unsubscribe: Functi
 };
 
 export const createGraph = (): GraphRegistry => {
-  const nodes: Map<string, Function> = new Map();
-  const routes: Map<string, Function> = new Map();
-  const edges: Map<string, string> = new Map();
-  const parameters: Map<string, ZodType> = new Map();
+  const context: RegistryContext = new Map();
 
-  const registry = createRegistry({
-    nodes,
-    routes,
-    edges,
-    parameters,
-  });
+  const registry = createRegistry(context);
+
   const workflow: Omit<GraphRegistry, keyof DefaultRegistry> = {
     compile(start, end) {
-      return createGraphRunner({
+      return createGraphRunnable({
         start,
         end,
-        edges: new Map(edges),
-        nodes: new Map(nodes),
-        routes: new Map(routes),
-        parameters: new Map(parameters),
+        resigry: context,
       });
     },
   };
@@ -353,3 +361,26 @@ export const node = <Name extends string = string, Input = any, Output = any>(no
 }) => {
   return node;
 };
+
+export namespace node {
+  export type infer<T extends ReturnType<typeof node>> = T extends {
+    name: infer N;
+    execute: (input: infer I) => infer O;
+  }
+    ? { name: N; input: I; output: O extends PromiseLike<any> ? Awaited<O> : O }
+    : never;
+}
+
+/**
+ * A flexible type definition for node router functions.
+ * This type is used to bypass the strict type constraints of router functions.
+ * It intentionally applies a loose type to balance between type safety and ease of use.
+ *
+ * @remarks
+ * The actual type checking is performed when the `dynamicEdge` method is called.
+ * Therefore, even though the type is loosened here, appropriate type checking
+ * still occurs at the point of usage.
+ */
+export type FlexibleRouterType = any;
+
+export const nodeRouter = (router: NodeRouter<Node, string, string>) => router as FlexibleRouterType;
