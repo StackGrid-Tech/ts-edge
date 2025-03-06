@@ -44,7 +44,7 @@ const workflow = createGraph()
   .edge('transform', 'output');
 
 // Compile the workflow to create a runnable app
-const app = workflow.compile('input', 'output');
+const app = workflow.compile('input', 'output'); 
 
 // Execute the workflow
 app.run('hello world').then((result) => {
@@ -96,12 +96,8 @@ workflow.dynamicEdge('nodeA', ({ output }) => {
 // Dynamic edge that customizes the input for the next node
 workflow.dynamicEdge('nodeA', ({ output }) => {
   return {
-    name: 'processingNode',
-    input: {
-      originalValue: output,
-      processedValue: output * 2,
-      timestamp: Date.now(),
-    },
+    name: output > 10 ?'nodeB':'nodeC',
+    input: output * 2,
   };
 });
 ```
@@ -124,36 +120,20 @@ workflow.dynamicEdge('nodeA', myRouter);
 
 For flexibility with pre-defined routers, use the loosely typed version:
 
-```typescript
-/**
- * A flexible type definition for node router functions.
- * This type is used to bypass the strict type constraints of router functions.
- * It intentionally applies a loose type to balance between type safety and ease of use.
- *
- * @remarks
- * The actual type checking is performed when the `dynamicEdge` method is called.
- * Therefore, even though the type is loosened here, appropriate type checking
- * still occurs at the point of usage.
- */
-type FlexibleRouterType = any;
-
-// For cases where you need more flexibility with router typing
-const flexibleRouter = nodeRouter((node) => {
-  // Complex routing logic here
-  return 'nextNode';
-}) as FlexibleRouterType;
-
-// Later used in various workflows
-workflow.dynamicEdge('someNode', flexibleRouter);
-```
 
 ### Workflow Compilation
 
 After defining your nodes and edges, compile the workflow to create an executable app:
 
 ```typescript
+// Basic usage with defined start and end nodes
 const app = workflow.compile('startNode', 'endNode');
+
+// End node is optional - nodes without outgoing edges will automatically complete the workflow
+const app = workflow.compile('startNode');
 ```
+
+When no end node is specified, any node without outgoing edges is treated as a potential end point. This allows for more flexible workflow designs where multiple paths can lead to different completion points.
 
 ### Workflow Execution
 
@@ -225,262 +205,6 @@ app.subscribe((event) => {
   }
 });
 ```
-
-## Advanced Examples
-
-### Conditional Branching with Custom Input
-
-```typescript
-const workflow = createGraph()
-  .addNode({
-    name: 'input',
-    execute: (input: { value: number; metadata: any }) => ({
-      value: input.value,
-      timestamp: Date.now(),
-      metadata: input.metadata,
-    }),
-  })
-  .addNode({
-    name: 'processHigh',
-    execute: (input: { original: number; category: string }) =>
-      `Value ${input.original} is categorized as ${input.category}`,
-  })
-  .addNode({
-    name: 'processLow',
-    execute: (input: { original: number; category: string }) =>
-      `Value ${input.original} is categorized as ${input.category}`,
-  })
-  .addNode({
-    name: 'output',
-    execute: (input: string) => ({ message: input }),
-  })
-  // Dynamic edge with custom input transformation
-  .dynamicEdge('input', ({ output }) => {
-    const category = output.value > 50 ? 'high' : 'low';
-    const targetNode = output.value > 50 ? 'processHigh' : 'processLow';
-
-    return {
-      name: targetNode,
-      input: {
-        original: output.value,
-        category: category,
-        // We can also pass through additional metadata if needed
-        metadata: output.metadata,
-      },
-    };
-  })
-  .edge('processHigh', 'output')
-  .edge('processLow', 'output');
-
-const app = workflow.compile('input', 'output');
-```
-
-### Even/Odd Processing Workflow
-
-```typescript
-const workflow = createGraph()
-  .addNode({
-    name: 'input',
-    execute: (input: number) => input,
-  })
-  .addNode({
-    name: 'processEven',
-    execute: (input: number) => `${input} is even`,
-  })
-  .addNode({
-    name: 'processOdd',
-    execute: (input: number) => `${input} is odd`,
-  })
-  .addNode({
-    name: 'output',
-    execute: (input: string) => input,
-  })
-  .dynamicEdge('input', ({ output }) => (output % 2 === 0 ? 'processEven' : 'processOdd'))
-  .edge('processEven', 'output')
-  .edge('processOdd', 'output');
-
-const app = workflow.compile('input', 'output');
-```
-
-### Data Transformation Workflow
-
-```typescript
-interface UserData {
-  name: string;
-  age: number;
-}
-
-const workflow = createGraph()
-  .addNode({
-    name: 'validate',
-    execute: (input: UserData) => {
-      if (!input.name) throw new Error('Name is required');
-      if (input.age < 0) throw new Error('Age must be positive');
-      return input;
-    },
-  })
-  .addNode({
-    name: 'transform',
-    execute: (input: UserData) => ({
-      displayName: input.name.toUpperCase(),
-      isAdult: input.age >= 18,
-      ageCategory: input.age < 18 ? 'minor' : 'adult',
-    }),
-  })
-  .edge('validate', 'transform');
-
-const app = workflow.compile('validate', 'transform');
-
-// Run with validation error
-app.run({ name: '', age: 25 }).then((result) => {
-  console.log(result.isOk); // false
-  console.log(result.error); // Error: Name is required
-});
-
-// Run with valid data
-app.run({ name: 'John', age: 25 }).then((result) => {
-  console.log(result.isOk); // true
-  console.log(result.output); // { displayName: 'JOHN', isAdult: true, ageCategory: 'adult' }
-});
-```
-
-## Flexible Type Variants
-
-For cases where strict typing might be too restrictive, the library provides loosely typed variants:
-
-```typescript
-import { createLooselyTypedGraph } from 'ts-edge';
-
-// Create a workflow with less strict type checking
-const workflow = createLooselyTypedGraph()
-  .addNode({
-    name: 'someNode',
-    execute: (input) => input, // No need to specify types explicitly
-  })
-  .dynamicEdge('someNode', (node) => {
-    // More flexible router without strict type checking
-    return 'anotherNode';
-  });
-
-const app = workflow.compile('someNode');
-```
-
-This approach is useful for rapid prototyping or cases where the strict type system becomes too cumbersome.
-
-## Testing
-
-The library includes a comprehensive test suite. To run the tests:
-
-```bash
-npm test
-```
-
-Example test snippet:
-
-```typescript
-test('should run a simple workflow', async () => {
-  const workflow = createGraph()
-    .addNode({
-      name: 'start',
-      execute: (input: number) => input * 2,
-    })
-    .addNode({
-      name: 'end',
-      execute: (input: number) => input + 10,
-    })
-    .edge('start', 'end');
-
-  const app = workflow.compile('start', 'end');
-  const result = await app.run(5);
-
-  expect(result.isOk).toBe(true);
-  expect(result.output).toBe(20); // (5 * 2) + 10
-});
-```
-
-## API Reference
-
-### Core Functions
-
-#### `createGraph()`
-
-Creates a new workflow registry for building workflows with strict type checking.
-
-#### `createLooselyTypedGraph()`
-
-Creates a new workflow registry with relaxed type constraints for more flexible development.
-
-#### `node({ name, execute })` (Optional)
-
-Helper function to pre-define nodes that can be imported from separate files.
-
-#### `nodeRouter(routerFunction)`
-
-Helper function to pre-define router functions that can be reused across workflows.
-
-### Workflow Methods
-
-#### `addNode({ name, execute })`
-
-Adds a node to the workflow directly.
-
-#### `edge(fromNode, toNode)`
-
-Creates a static edge between two nodes.
-
-#### `dynamicEdge(fromNode, routerFunction)`
-
-Creates a dynamic edge using a router function. The router can return a node name or an object with `{ name, input }`.
-
-#### `compile(startNode, endNode?)`
-
-Compiles the workflow into an executable app.
-
-### App Methods
-
-#### `run(input, options?)`
-
-Runs the workflow with the given input and options.
-
-#### `subscribe(handler)`
-
-Subscribes to workflow events.
-
-#### `unsubscribe(handler)`
-
-Unsubscribes from workflow events.
-
-#### `attachHook(entryPoint)`
-
-Attaches a hook to a specific node in the workflow. Returns a hook registry.
-
-### Hook Registry Methods
-
-#### `addNode({ name, execute })`
-
-Adds a node to the hook workflow.
-
-#### `edge(fromNode, toNode)`
-
-Creates a static edge between two nodes in the hook workflow.
-
-#### `dynamicEdge(fromNode, routerFunction)`
-
-Creates a dynamic edge in the hook workflow.
-
-#### `compile(startNode, endNode?)`
-
-Compiles the hook workflow into a connector.
-
-### Connector Methods
-
-#### `connect(options?)`
-
-Connects the hook to the main workflow.
-
-#### `disconnect()`
-
-Disconnects the hook from the main workflow.
 
 ## License
 
