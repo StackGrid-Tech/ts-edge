@@ -1,68 +1,115 @@
 import { safe, SafeResult } from 'ts-safe';
-import { randomId, withTimeout } from './shared';
+import { createPubSub, randomId, withTimeout } from './shared';
 import type {
-  NodeEndEvent,
-  NodeStartEvent,
+  GraphNodeEndEvent,
+  GraphNodeStartEvent,
   RunOptions,
-  NodeContext,
-  DefaultRegistry,
   GraphRegistry,
   GraphRunnable,
-  HookRegistry,
-  NodeHistory,
   GraphStartEvent,
   GraphEndEvent,
   GraphResult,
-  GraphEvent,
-  DefaultRunable,
   GraphStructure,
-  HookRunable,
-  Node,
-  NodeRouter,
+  GraphNodeRouter,
+  GraphNodeHistory,
+  GraphNode,
 } from './interfaces';
 
-type RegistryContext = Map<
-  string,
-  {
-    execute: Function;
-    edge?:
-      | {
-          type: 'direct';
-          next: string;
-        }
-      | {
-          type: 'dynamic';
-          next: Function;
-        };
-  }
->;
+type NodeContext = {
+  execute: Function;
+  edge?:
+    | {
+        type: 'direct';
+        next: string[];
+      }
+    | {
+        type: 'dynamic';
+        next: Function;
+      };
+} & ({ isMergeNode: true; sources: string[] } | { isMergeNode: false; sources?: string[] });
 
-const createRunnable = (context: RegistryContext): DefaultRunable & { publish: (event: any) => void } => {
-  const eventHandlers: Array<(event: any) => any> = [];
-  const hookMap: Map<string, Function[]> = new Map();
-  const pubsup = {
-    publish(e) {
-      eventHandlers.forEach(async (h) => h(e));
-    },
-    subscribe(handler) {
-      eventHandlers.push(handler);
-    },
-    unsubscribe(handler) {
-      const index = eventHandlers.findIndex((v) => v === handler);
-      if (index !== -1) eventHandlers.splice(index, 1);
-    },
+type RegistryContext = Map<string, NodeContext>;
+interface RunnerContext {
+  executionId: string;
+  end?: string;
+  name: string;
+  node: NodeContext;
+  mergeTarget?: string;
+  addHistory: (history: GraphNodeHistory) => void;
+  publishEvent: (event: GraphNodeStartEvent | GraphNodeEndEvent) => void;
+}
+
+const createRunner =
+  ({ executionId, name, node, end, addHistory, publishEvent }: RunnerContext) =>
+  async (input: any) => {
+    const startedAt = Date.now();
+    return safe(node)
+      .watch(
+        publishEvent.bind(null, {
+          executionId,
+          eventType: 'NODE_START',
+          startedAt,
+          node: { name, input },
+        } as GraphNodeStartEvent)
+      )
+      .effect((node) => {
+        if (!node) throw new Error(`Not Found Node "${name}"`);
+      })
+      .map((node) => node.execute(input))
+      .map(async (output): Promise<{ name: string[]; output: any }> => {
+        if ((end != undefined && name == end) || !node.edge) return { name: [], output };
+        if (node.edge.type == 'direct') {
+          return {
+            output,
+            name: node.edge.next,
+          };
+        }
+        const router = node.edge.next;
+        const next = await router(output);
+        if (next == undefined) return { name: [], output };
+
+        if (typeof next == 'string') return { name: [next], output };
+
+        return { name: next.name, output };
+      })
+      .watch((result) => {
+        const history = {
+          startedAt,
+          endedAt: Date.now(),
+          error: result.error,
+          node: {
+            input,
+            name: name,
+            output: result.value?.output,
+          },
+          isOk: result.isOk,
+        } as GraphNodeHistory;
+        addHistory(history);
+        publishEvent({
+          eventType: 'NODE_END',
+          executionId,
+          ...history,
+        } as GraphNodeEndEvent);
+      })
+      .unwrap();
   };
 
-  pubsup.subscribe((event: GraphEvent) => {
-    if (event.eventType == 'NODE_END' && event.isOk) {
-      const hooks = hookMap.get(event.node.name) ?? [];
-      hooks.forEach(async (hook) => hook(event.node.output));
-    }
-  });
+const createGraphRunnable = ({
+  start,
+  end,
+  registry,
+}: {
+  registry: RegistryContext;
+  start: string;
+  end?: string;
+}): GraphRunnable<never> => {
+  const { publish, subscribe, unsubscribe } = createPubSub();
 
-  const app: DefaultRunable & { publish: (event: any) => void } = {
+  return {
+    subscribe,
+    unsubscribe,
     getStructure() {
-      return Array.from(context.entries()).map(([name, item]) => ({
+      return Array.from(registry.entries()).map(([name, item]) => ({
         name,
         edge: item.edge
           ? {
@@ -72,143 +119,55 @@ const createRunnable = (context: RegistryContext): DefaultRunable & { publish: (
           : undefined,
       })) as GraphStructure;
     },
-    subscribe(handler) {
-      pubsup.subscribe(handler);
-    },
-    unsubscribe(handler) {
-      pubsup.unsubscribe(handler);
-    },
-    attachHook(entryPoint) {
-      const observer = {
-        subscribe: (hook) => hookMap.set(entryPoint, [...(hookMap.get(entryPoint) ?? []), hook]),
-        unsubscribe: (hook) => {
-          hookMap.set(
-            entryPoint,
-            [...(hookMap.get(entryPoint) ?? [])].filter((h) => h != hook)
-          );
-        },
-      };
-      return createHookRegistry(observer) as HookRegistry;
-    },
-    publish(e) {
-      pubsup.publish(e);
-    },
-  };
-
-  return app;
-};
-
-const createGraphRunnable = ({
-  start,
-  end,
-  resigry,
-}: {
-  resigry: RegistryContext;
-  start: string;
-  end?: string;
-}): GraphRunnable<never> => {
-  const { publish, ...runable } = createRunnable(resigry);
-
-  const runner: Omit<GraphRunnable, keyof DefaultRunable> = {
-    run(input, options) {
+    async run(input, options) {
       const opt: RunOptions = { timeout: 600000, maxNodeVisits: 100, ...(options as any) };
       const executionId = randomId();
       const startedAt = Date.now();
-
-      const context: NodeContext = {
-        histories: [],
-        name: start,
-        input: input,
-        timestamp: Date.now(),
-        next: {
-          name: undefined,
-          input: undefined,
+      const mergeTargetByNode = Array.from(registry.entries()).reduce(
+        (prev, [name, context]) => {
+          if (context.sources) {
+            context.sources.forEach((brachNodeName) => {
+              prev[brachNodeName] = name;
+            });
+          }
+          return prev;
         },
+        {} as Record<string, string>
+      );
+
+      const histories: GraphNodeHistory[] = [];
+
+      const addHistory = (h) => {
+        histories.push(h);
       };
-      const nodeStart = () => {
-        const now = Date.now();
-        context.timestamp = now;
-        publish({
+
+      const runNode = async (name: string, input: any) => {
+        if (opt.maxNodeVisits-- <= 0) throw new Error(`Maximum node visits exceeded`);
+        const nodeContext = registry.get(name);
+
+        const runner = createRunner({
           executionId,
-          eventType: 'NODE_START',
-          startedAt: now,
-          node: { name: context.name, input: context.input },
-        } as NodeStartEvent);
-      };
-      const process = () => {
-        const input = context.input;
-        const executor = resigry.get(context.name)!;
-        return executor.execute(input);
-      };
-      const updateOutput = (output: any) => {
-        context.output = output;
-      };
+          addHistory,
+          name,
+          end,
+          node: nodeContext!,
+          mergeTarget: mergeTargetByNode[name],
+          publishEvent: publish,
+        });
 
-      const findNextNode = () => {
-        return safe()
-          .map((): NodeContext['next'] | undefined => {
-            const currentNode = resigry.get(context.name)!;
-            if ((end != undefined && context.name == end) || currentNode.edge == undefined) return;
+        const { name: nextNodes, output } = await runner(input);
 
-            if (currentNode.edge.type == 'direct') {
-              return {
-                input: context.output,
-                name: currentNode.edge.next,
-              };
-            }
-            const router = currentNode.edge.next;
-            return router({ name: context.name, input: context.input, output: context.output });
-          })
-          .map((result) => {
-            if (result == undefined) return {};
-            if (typeof result == 'string') return { name: result, input: context.output };
-            return { name: result.name, input: result.input };
-          })
-          .effect((next) => {
-            if (next.name && !resigry.has(next.name))
-              throw new Error(`Next node "${next.name}" not found in the graph`);
-            context.next = next;
-          })
-          .unwrap();
-      };
+        if (nextNodes?.length) {
+          if (nextNodes.length === 1) {
+            return runNode(nextNodes[0], output);
+          } else {
+            // 병렬 실행
+            await Promise.all(nextNodes.map((nextName) => runNode(nextName, output)));
+            return output;
+          }
+        }
 
-      const nodeEnd = (result: SafeResult) => {
-        const history = {
-          startedAt: context.timestamp,
-          endedAt: Date.now(),
-          error: result.error,
-          node: {
-            input: context.input,
-            name: context.name,
-            output: context.output,
-          },
-          isOk: result.isOk,
-        } as NodeHistory;
-        context.histories.push(history);
-        publish({
-          eventType: 'NODE_END',
-          executionId,
-          ...history,
-        } as NodeEndEvent);
-      };
-      const runNode = () => {
-        const chain = safe()
-          .watch(nodeStart) // Emit node start event
-          .map(process) // Process the node
-          .effect(updateOutput) // Process the node
-          .effect(findNextNode) // Determine next node
-          .watch(nodeEnd) // Emit node end event
-          .map((output) => {
-            // If there's a next node, update context and continue execution
-            if (!context.next?.name) return output;
-            context.name = context.next.name;
-            context.input = context.next.input;
-            context.output = undefined;
-            context.next = {};
-            if (--opt.maxNodeVisits <= 0) throw new Error('Execution aborted: Maximum node visit count exceeded');
-            return runNode().unwrap(); // Recursively execute the next node
-          });
-        return chain;
+        return output;
       };
 
       const emitGraphStartMessage = () => {
@@ -216,7 +175,7 @@ const createGraphRunnable = ({
           eventType: 'WORKFLOW_START',
           executionId,
           startedAt,
-          input: input,
+          input,
         } as GraphStartEvent);
       };
 
@@ -226,18 +185,18 @@ const createGraphRunnable = ({
           executionId,
           startedAt,
           endedAt: Date.now(),
-          histories: context.histories,
+          histories,
           isOk: result.isOk,
           error: result.error,
           output: result.value,
         } as GraphEndEvent);
       };
 
-      const toResult = (isOk: boolean, output: unknown) => {
+      const toResult = (isOk: boolean) => (output: unknown) => {
         return {
           startedAt,
           endedAt: Date.now(),
-          histories: context.histories,
+          histories,
           error: isOk ? undefined : output,
           output: isOk ? output : undefined,
           isOk,
@@ -250,30 +209,41 @@ const createGraphRunnable = ({
             withTimeout(
               safe(Promise.resolve())
                 .watch(emitGraphStartMessage)
-                .flatMap(runNode)
+                .map(runNode.bind(null, start, input))
                 .watch(emitGraphEndMessage)
                 .unwrap() as never,
               Math.max(0, opt.timeout)
             ) as Promise<never>
         )
-        .map((output) => toResult(true, output))
-        .catch((error) => toResult(false, error))
+        .map(toResult(true))
+        .catch(toResult(false))
         .unwrap();
     },
   };
-
-  return Object.assign(runable, runner);
 };
 
-const createRegistry = (context: RegistryContext = new Map()): DefaultRegistry => {
-  const registry: DefaultRegistry = {
+export const createGraph = (): GraphRegistry => {
+  const context: RegistryContext = new Map();
+
+  const registry: GraphRegistry = {
     addNode(node) {
       if (context.has(node.name)) {
         throw new Error(`Node with name "${node.name}" already exists in the graph`);
       }
-      const execute = node.parameters ? (input) => node.execute(node.parameters!.parse(input)) : node.execute;
       context.set(node.name, {
-        execute,
+        execute: node.execute,
+        isMergeNode: false,
+      });
+      return registry;
+    },
+    addMergeNode(node) {
+      if (context.has(node.name)) {
+        throw new Error(`Node with name "${node.name}" already exists in the graph`);
+      }
+      context.set(node.name, {
+        execute: node.execute,
+        isMergeNode: true,
+        sources: node.sources,
       });
       return registry;
     },
@@ -287,7 +257,7 @@ const createRegistry = (context: RegistryContext = new Map()): DefaultRegistry =
       }
       node.edge = {
         type: 'direct',
-        next: to,
+        next: [to].flat() as string[],
       };
       return registry;
     },
@@ -305,65 +275,26 @@ const createRegistry = (context: RegistryContext = new Map()): DefaultRegistry =
       };
       return registry;
     },
-  };
-  return registry;
-};
-
-const createHookRegistry = (observer: { subscribe: Function; unsubscribe: Function }): HookRegistry => {
-  const context: RegistryContext = new Map();
-  const registry = createRegistry(context);
-
-  const hook: Omit<HookRegistry, keyof DefaultRegistry> = {
-    compile(start, end) {
-      const { run, ...rest } = createGraphRunnable({ start, end, resigry: context });
-      let handler: Function | undefined;
-      return Object.assign(rest, {
-        connect(options) {
-          handler = (output) => {
-            run(output as never, {
-              maxNodeVisits: options?.maxNodeVisits,
-              timeout: options?.timeout,
-            }).then(options?.onResult);
-          };
-          observer.subscribe(handler);
-        },
-        disconnect() {
-          if (handler) observer.unsubscribe(handler);
-          handler = undefined;
-        },
-      } as Omit<HookRunable, keyof DefaultRunable>);
-    },
-  };
-
-  return Object.assign(registry, hook);
-};
-
-export const createGraph = (): GraphRegistry => {
-  const context: RegistryContext = new Map();
-
-  const registry = createRegistry(context);
-
-  const workflow: Omit<GraphRegistry, keyof DefaultRegistry> = {
     compile(start, end) {
       return createGraphRunnable({
         start,
         end,
-        resigry: context,
+        registry: context,
       });
     },
   };
-  return Object.assign(registry, workflow);
+  return registry;
 };
 
-export const node = <Name extends string = string, Input = any, Output = any>(node: {
+export const graphNode = <Name extends string = string, Input = any, Output = any>(node: {
   name: Name;
   execute: (input: Input) => Output;
 }) => {
   return node;
 };
 
-export namespace node {
-  export type infer<T extends ReturnType<typeof node>> = T extends {
+export namespace graphNode {
+  export type infer<T extends ReturnType<typeof graphNode>> = T extends {
     name: infer N;
     execute: (input: infer I) => infer O;
   }
@@ -383,4 +314,4 @@ export namespace node {
  */
 export type FlexibleRouterType = any;
 
-export const nodeRouter = (router: NodeRouter<Node, string, string>) => router as FlexibleRouterType;
+export const graphNodeRouter = (router: GraphNodeRouter<GraphNode, string, string>) => router as FlexibleRouterType;

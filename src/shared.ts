@@ -20,3 +20,19 @@ export const withTimeout = <T>(promise: PromiseLike<T>, ms: number, errorMessage
     clearTimeout(key);
   });
 };
+
+export const createPubSub = () => {
+  const eventHandlers: Array<(event: any) => any> = [];
+  return {
+    publish(e) {
+      eventHandlers.forEach(async (h) => h(e));
+    },
+    subscribe(handler) {
+      eventHandlers.push(handler);
+    },
+    unsubscribe(handler) {
+      const index = eventHandlers.findIndex((v) => v === handler);
+      if (index !== -1) eventHandlers.splice(index, 1);
+    },
+  };
+};

@@ -107,10 +107,10 @@ workflow.dynamicEdge('nodeA', ({ output }) => {
 For complex routing logic, you can define router functions separately and reuse them:
 
 ```typescript
-import { nodeRouter } from 'ts-edge';
+import { GraphNodeRouter } from 'ts-edge';
 
 // Define a reusable router
-const myRouter = nodeRouter((node) => {
+const myRouter = GraphNodeRouter((node) => {
   return node.output > 10 ? 'largeValueNode' : 'smallValueNode';
 });
 

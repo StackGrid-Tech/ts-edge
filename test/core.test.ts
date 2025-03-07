@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { createGraph, node, nodeRouter } from '../src/core';
+import { createGraph, node, GraphNodeRouter } from '../src/core';
 import { GraphEvent, GraphResult } from '../src/interfaces';
 import { z } from 'zod';
 
@@ -175,7 +175,7 @@ describe('Workflow System', () => {
     test('should respect maxNodeVisits option', async () => {
       // Create a workflow with an infinite loop
 
-      const router = nodeRouter(() => {
+      const router = GraphNodeRouter(() => {
         return 'loopNode';
       });
       const workflow = createGraph()
