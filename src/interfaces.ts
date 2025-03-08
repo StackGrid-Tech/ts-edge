@@ -169,30 +169,30 @@ export interface GraphRunnable<
   run(input: InputOf<T, StartNode>, options?: Partial<RunOptions>): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
 }
 
-export interface GraphRegistry<T extends GraphNode = never> {
+export interface GraphRegistry<T extends GraphNode = never, Connected extends string = never> {
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
     execute: (input: Input) => Output;
-  }): GraphRegistry<T | GraphNode<Name, Input, Output>>;
+  }): GraphRegistry<T | GraphNode<Name, Input, Output>, Connected>;
   addMergeNode<Name extends string = string, NodeNames extends T['name'][] = T['name'][], Output = any>(node: {
     name: Name;
     sources: NodeNames;
-    execute: (inputs: { [K in NodeNames[number]]?: OutputOf<T, K> }) => Output;
-  }): GraphRegistry<T | GraphNode<Name, any, Output>>;
+    execute: (inputs: { [K in NodeNames[number]]: OutputOf<T, K> }) => Output;
+  }): GraphRegistry<T | GraphNode<Name, any, Output>, Connected>;
   edge<
-    FromName extends T['name'],
+    FromName extends Exclude<T['name'], Connected>,
     ToName extends Exclude<ConnectableNode<T, Extract<T, { name: FromName }>>, FromName>,
   >(
     from: FromName,
     to: ToName | ToName[]
-  ): GraphRegistry<T>;
+  ): GraphRegistry<T, Connected | FromName>;
 
   dynamicEdge<FromName extends T['name'], ToName extends T['name']>(
     from: FromName,
     router: GraphNodeRouter<T, FromName, ToName>
-  ): GraphRegistry<T>;
+  ): GraphRegistry<T, Connected | FromName>;
 
-  compile<StartName extends T['name'], EndName extends T['name']>(
+  compile<StartName extends string = T['name'], EndName extends string = T['name']>(
     startNode: StartName,
     endNode?: EndName
   ): GraphRunnable<T, StartName, EndName>;
