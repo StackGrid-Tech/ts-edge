@@ -1,3 +1,7 @@
+export const isNull = (v: unknown): v is undefined | null => {
+  return v == undefined;
+};
+
 export const randomId = () => {
   return 'ts-edge-xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = (Math.random() * 16) | 0;
@@ -36,3 +40,31 @@ export const createPubSub = () => {
     },
   };
 };
+
+export const Deferred = () => {
+  let resolve!: Function;
+  let reject!: Function;
+  const promise = new Promise((rs, rj) => {
+    resolve = rs;
+    reject = rj;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
+};
+
+export const PromiseChain = () => {
+  let lastPromise: Promise<any> = Promise.resolve();
+  return <T>(asyncFunction: () => Promise<T>): Promise<T> => {
+    lastPromise = lastPromise.then(() => asyncFunction());
+    return lastPromise as Promise<T>;
+  };
+};
+
+export const delay = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });

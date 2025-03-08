@@ -406,3 +406,18 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
     endNode?: EndName
   ): GraphRunnable<T, StartName, EndName>;
 }
+
+export type GraphNodeContext = {
+  execute: Function;
+  edge?:
+    | {
+        type: 'direct';
+        next: string[];
+      }
+    | {
+        type: 'dynamic';
+        next: Function;
+      };
+} & ({ isMergeNode: true; sources: string[] } | { isMergeNode: false; sources?: string[] });
+
+export type GraphRegistryContext = Map<string, GraphNodeContext>;

@@ -1,806 +1,525 @@
-import { describe, test, expect } from 'vitest';
-import { createGraph, node, GraphNodeRouter } from '../src/core';
-import { GraphEvent, GraphResult } from '../src/interfaces';
-import { z } from 'zod';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Helper function to create a promise-based lock
-const createLock = () => {
-  let resolve: () => void;
-  let promise = Promise.resolve();
-  const lock = () => {
-    promise = new Promise<void>((r) => {
-      resolve = r;
+import type { GraphEvent } from '../src/interfaces';
+import { delay } from '../src/shared';
+import { graphNodeRouter } from '../src/core/helper';
+import { runnerDebug } from '../src/core/debug';
+import { createGraph } from '../src/core/registry';
+
+describe('Workflow Module', () => {
+  // 콘솔 오류 스파이 설정
+  let consoleErrorSpy;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  describe('1. 기본 노드 생성 및 등록', () => {
+    it('노드를 생성하고 등록할 수 있어야 함', () => {
+      const workflow = createGraph().addNode({
+        name: 'test',
+        execute: (input: number) => input * 2,
+      });
+
+      const app = workflow.compile('test');
+      expect(app).toBeDefined();
     });
-  };
-  lock();
-  return {
-    lock,
-    wait: () => promise,
-    unlock: () => resolve?.(),
-  };
-};
 
-const debug = (e) => {
-  console.log(e);
-};
-debug('');
+    it('같은 이름의 노드를 중복 등록하면 오류가 발생해야 함', () => {
+      const workflow = createGraph().addNode({
+        name: 'test',
+        execute: (input: number) => input * 2,
+      });
 
-describe('Workflow System', () => {
-  describe('Creating and Compiling Workflows', () => {
-    test('should create a simple workflow with two nodes', () => {
+      expect(() =>
+        workflow.addNode({
+          name: 'test',
+          execute: (input: number) => input * 3,
+        })
+      ).toThrow('Node with name "test" already exists in the graph');
+    });
+
+    it('getStructure 메서드가 올바른 그래프 구조를 반환해야 함', () => {
       const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'start',
-            execute: (input: number) => input * 2,
-          })
-        )
-        .addNode(
-          node({
-            name: 'end',
-            execute: (input: number) => input + 10,
-          })
-        )
-        .edge('start', 'end')
-        .compile('start', 'end');
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'process',
+          execute: (input: number) => input * 2,
+        })
+        .edge('start', 'process');
 
-      expect(workflow).toBeDefined();
+      const app = workflow.compile('start');
+      const structure = app.getStructure();
 
-      const structure = workflow.getStructure();
+      expect(structure).toHaveLength(2);
+      expect(structure).toContainEqual(
+        expect.objectContaining({
+          name: 'start',
+          edge: expect.objectContaining({
+            type: 'direct',
+            name: ['process'],
+          }),
+        })
+      );
+    });
+  });
 
-      expect(structure.some((node) => node.name == 'start')).toBe(true);
-      expect(structure.some((node) => node.name == 'end')).toBe(true);
-      expect(structure.find((node) => node.name == 'start')?.edge).toEqual({ name: 'end', type: 'direct' });
+  describe('2. 단일 경로 워크플로우 실행', () => {
+    it('단일 노드 워크플로우를 실행할 수 있어야 함', async () => {
+      const workflow = createGraph().addNode({
+        name: 'single',
+        execute: (input: number) => input * 2,
+      });
+
+      const app = workflow.compile('single');
+      const result = await app.run(5);
+
+      expect(result.isOk).toBe(true);
+      expect(result.output).toBe(10);
+      expect(result.histories).toHaveLength(1);
+      expect(result.histories[0].node.output).toBe(10);
     });
 
-    test('should throw an error when adding a node with duplicate name', () => {
-      const workflow = createGraph().addNode(
-        node({
+    it('여러 노드로 구성된 선형 워크플로우를 실행할 수 있어야 함', async () => {
+      const workflow = createGraph()
+        .addNode({
           name: 'start',
           execute: (input: number) => input * 2,
         })
-      );
+        .addNode({
+          name: 'middle',
+          execute: (input: number) => input + 5,
+        })
+        .addNode({
+          name: 'end',
+          execute: (input: number) => input * 3,
+        })
+        .edge('start', 'middle')
+        .edge('middle', 'end');
 
-      expect(() => {
-        workflow.addNode(
-          node({
-            name: 'start',
-            execute: (input: number) => input * 3,
-          })
-        );
-      }).toThrow(/Node with name "start" already exists/);
-    });
-  });
-
-  describe('Running Workflows', () => {
-    test('should run a simple workflow with two nodes', async () => {
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'start',
-            execute: (input: number) => input * 2,
-          })
-        )
-        .addNode(
-          node({
-            name: 'end',
-            execute: (input: number) => input + 10,
-          })
-        )
-        .edge('start', 'end')
-        .compile('start', 'end');
-
-      const result = await workflow.run(5);
+      const app = workflow.compile('start');
+      const result = await app.run(5);
 
       expect(result.isOk).toBe(true);
-      expect(result.output).toBe(20); // (5 * 2) + 10
-      expect(result.histories.length).toBe(2);
+      expect(result.output).toBe(45); // ((5 * 2) + 5) * 3 = 45
+      expect(result.histories).toHaveLength(3);
       expect(result.histories[0].node.name).toBe('start');
-      expect(result.histories[1].node.name).toBe('end');
+      expect(result.histories[1].node.name).toBe('middle');
+      expect(result.histories[2].node.name).toBe('end');
     });
 
-    test('should handle async node executes', async () => {
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'start',
-            execute: async (input: number) => {
-              return new Promise<number>((resolve) => setTimeout(() => resolve(input * 2), 10));
-            },
-          })
-        )
-        .addNode(
-          node({
-            name: 'end',
-            execute: (input: number) => input + 10,
-          })
-        )
-        .edge('start', 'end')
-        .compile('start', 'end');
-
-      const result = await workflow.run(5);
-
-      expect(result.isOk).toBe(true);
-      expect(result.output).toBe(20); // (5 * 2) + 10
-    });
-
-    test('should handle errors in node executes', async () => {
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'start',
-            execute: (input: number) => {
-              if (input < 0) throw new Error('Input must be positive');
-              return input * 2;
-            },
-          })
-        )
-        .addNode(
-          node({
-            name: 'end',
-            execute: (input: number) => input + 10,
-          })
-        )
-        .edge('start', 'end')
-        .compile('start', 'end');
-
-      const result = await workflow.run(-5);
-
-      expect(result.isOk).toBe(false);
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toBe('Input must be positive');
-      expect(result.histories.length).toBe(1);
-      expect(result.histories[0].isOk).toBe(false);
-    });
-
-    test('should respect timeout option', async () => {
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'start',
-            execute: async () => {
-              return new Promise((resolve) => setTimeout(resolve, 100));
-            },
-          })
-        )
-        .compile('start');
-
-      const result = await workflow.run(null, { timeout: 50 });
-
-      expect(result.isOk).toBe(false);
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toMatch(/timeout/i);
-    });
-
-    test('should respect maxNodeVisits option', async () => {
-      // Create a workflow with an infinite loop
-
-      const router = GraphNodeRouter(() => {
-        return 'loopNode';
-      });
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'loopNode',
-            execute: (count: number) => count + 1,
-          })
-        )
-        .dynamicEdge('loopNode', router)
-        .compile('loopNode');
-
-      const result = await workflow.run(0, { maxNodeVisits: 5 });
-
-      expect(result.isOk).toBe(false);
-      expect(result.error?.message).toMatch(/Maximum node visit count exceeded/);
-      expect(result.histories.length).toBe(5);
-    });
-  });
-
-  describe('Edge Connections', () => {
-    test('should support static edge connections', async () => {
+    it('지정된 end 노드에서 워크플로우가 종료되어야 함', async () => {
       const workflow = createGraph()
         .addNode({
-          name: 'nodeA',
-          execute: (input: string) => input.toUpperCase(),
+          name: 'start',
+          execute: (input: number) => input * 2,
         })
-        .addNode(
-          node({
-            name: 'nodeB',
-            execute: (input: string) => input + '!',
-          })
-        )
-        .edge('nodeA', 'nodeB')
-        .compile('nodeA', 'nodeB');
+        .addNode({
+          name: 'middle',
+          execute: (input: number) => input + 5,
+        })
+        .addNode({
+          name: 'end',
+          execute: (input: number) => input * 3,
+        })
+        .edge('start', 'middle')
+        .edge('middle', 'end');
 
-      const result = await workflow.run('hello');
+      const app = workflow.compile('start', 'middle');
+
+      const result = await app.run(5);
 
       expect(result.isOk).toBe(true);
-      expect(result.output).toBe('HELLO!');
-    });
-
-    test('should support dynamic edge connections', async () => {
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'input',
-            execute: (input: number) => input,
-          })
-        )
-        .addNode(
-          node({
-            name: 'evenPath',
-            execute: (input: number) => `${input} is even`,
-          })
-        )
-        .addNode(
-          node({
-            name: 'oddPath',
-            execute: (input: number) => `${input} is odd`,
-          })
-        )
-        .dynamicEdge('input', ({ output }) => {
-          return output % 2 === 0 ? 'evenPath' : 'oddPath';
-        })
-        .compile('input');
-
-      const evenResult = await workflow.run(2);
-      expect(evenResult.isOk).toBe(true);
-      expect(evenResult.output).toBe('2 is even');
-
-      const oddResult = await workflow.run(3);
-      expect(oddResult.isOk).toBe(true);
-      expect(oddResult.output).toBe('3 is odd');
-    });
-
-    test('should handle dynamic edge with input transformation', async () => {
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'start',
-            execute: (input: string) => ({ value: input, length: input.length }),
-          })
-        )
-        .addNode(
-          node({
-            name: 'process',
-            execute: (input: { processedValue: string }) => input.processedValue,
-          })
-        )
-        .dynamicEdge('start', ({ output }) => ({
-          name: 'process',
-          input: { processedValue: `Processed: ${output.value} (${output.length})` },
-        }))
-        .compile('start');
-
-      const result = await workflow.run('hello');
-
-      expect(result.isOk).toBe(true);
-      expect(result.output).toBe('Processed: hello (5)');
-    });
-
-    test('should throw error when adding multiple edges from same node', () => {
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'nodeA',
-            execute: (input: string) => input,
-          })
-        )
-        .addNode(
-          node({
-            name: 'nodeB',
-            execute: (input: string) => input,
-          })
-        )
-        .addNode(
-          node({
-            name: 'nodeC',
-            execute: (input: string) => input,
-          })
-        )
-        .edge('nodeA', 'nodeB');
-
-      expect(() => {
-        (workflow as any).edge('nodeA', 'nodeC');
-      }).toThrow(/Node "nodeA" already has an outgoing connection/);
+      expect(result.output).toBe(15); // (5 * 2) + 5 = 15
+      expect(result.histories).toHaveLength(2);
+      expect(result.histories[1].node.name).toBe('middle');
     });
   });
 
-  describe('Event Handling', () => {
-    test('should emit workflow start and end events', async () => {
+  describe('3. 이벤트 발행 및 구독', () => {
+    it('워크플로우 실행 시 적절한 이벤트가 발행되어야 함', async () => {
       const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'process',
-            execute: (input: number) => input * 2,
-          })
-        )
-        .compile('process');
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input * 2,
+        })
+        .addNode({
+          name: 'end',
+          execute: (input: number) => input + 5,
+        })
+        .edge('start', 'end');
 
-      const events: GraphEvent[] = [];
-      workflow.subscribe((event) => {
-        events.push(event);
-      });
+      const app = workflow.compile('start');
 
-      await workflow.run(5);
-
-      expect(events.length).toBe(4);
-      expect(events[0].eventType).toBe('WORKFLOW_START');
-      expect(events[1].eventType).toBe('NODE_START');
-      expect(events[2].eventType).toBe('NODE_END');
-      expect(events[3].eventType).toBe('WORKFLOW_END');
-
-      const startEvent = events[0] as any;
-      expect(startEvent.input).toBe(5);
-
-      const endEvent = events[3] as any;
-      expect(endEvent.isOk).toBe(true);
-      expect(endEvent.output).toBe(10);
-    });
-
-    test('should unsubscribe from events', async () => {
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'process',
-            execute: (input: number) => input * 2,
-          })
-        )
-        .compile('process');
-
-      const events: GraphEvent[] = [];
+      const events: any[] = [];
       const handler = (event: GraphEvent) => {
         events.push(event);
       };
 
-      workflow.subscribe(handler);
-      await workflow.run(5);
-      expect(events.length).toBe(4);
+      app.subscribe(handler);
+      await app.run(5);
+      app.unsubscribe(handler);
 
-      events.length = 0;
-      workflow.unsubscribe(handler);
-      await workflow.run(5);
-      expect(events.length).toBe(0);
+      expect(events).toHaveLength(6); // WORKFLOW_START + 2 * NODE_START/END + WORKFLOW_END
+      expect(events[0].eventType).toBe('WORKFLOW_START');
+      expect(events[1].eventType).toBe('NODE_START');
+      expect(events[1].node.name).toBe('start');
+      expect(events[2].eventType).toBe('NODE_END');
+      expect(events[5].eventType).toBe('WORKFLOW_END');
     });
   });
 
-  describe('Node parameters Validation', () => {
-    test('should validate input using zod parameters', async () => {
-      // Define a parameters for user data
-      const userparameters = z.object({
-        name: z.string().min(1, 'Name is required'),
-        age: z.number().min(0, 'Age must be positive'),
-        email: z.string().email('Invalid email format'),
-      });
-
-      // Create a workflow with parameters validation
+  describe('4. 동적 라우팅', () => {
+    it('동적 라우팅으로 조건에 따라 다른 경로를 실행할 수 있어야 함', async () => {
       const workflow = createGraph()
         .addNode({
-          name: 'validateUser',
-          execute: (input) => input, // Simply pass through valid data
-          parameters: userparameters, // Add parameters for validation
+          name: 'start',
+          execute: (input: number) => input,
         })
         .addNode({
-          name: 'processUser',
-          execute: (input) => ({
-            displayName: input.name.toUpperCase(),
-            isAdult: input.age >= 18,
-          }),
+          name: 'even',
+          execute: (input: number) => input + ' is even',
         })
-        .edge('validateUser', 'processUser');
+        .addNode({
+          name: 'odd',
+          execute: (input: number) => input + ' is odd',
+        })
+        .dynamicEdge('start', (output) => {
+          return output % 2 === 0 ? 'even' : 'odd';
+        });
 
-      const app = workflow.compile('validateUser', 'processUser');
+      // 짝수 입력 테스트
+      const app1 = workflow.compile('start');
+      const result1 = await app1.run(4);
+      expect(result1.output).toBe('4 is even');
 
-      // Test with valid data - should pass validation
-      const validResult = await app.run(
-        {
-          name: 'John',
-          age: 25,
-          email: 'john@example.com',
-        },
-        { maxNodeVisits: 4 }
-      );
-      console.log(validResult.error);
-      expect(validResult.isOk).toBe(true);
-      expect(validResult.output).toEqual({
-        displayName: 'JOHN',
-        isAdult: true,
-      });
-
-      // Test with invalid data - missing name
-      const invalidNameResult = await app.run({
-        name: '',
-        age: 30,
-        email: 'test@example.com',
-      });
-
-      expect(invalidNameResult.isOk).toBe(false);
-      expect(invalidNameResult.error).toBeDefined();
-      expect(invalidNameResult.error?.message).toContain('Name is required');
-
-      // Test with invalid data - negative age
-      const invalidAgeResult = await app.run({
-        name: 'Alice',
-        age: -5,
-        email: 'alice@example.com',
-      });
-
-      expect(invalidAgeResult.isOk).toBe(false);
-      expect(invalidAgeResult.error).toBeDefined();
-      expect(invalidAgeResult.error?.message).toContain('Age must be positive');
-
-      // Test with invalid data - wrong email format
-      const invalidEmailResult = await app.run({
-        name: 'Bob',
-        age: 40,
-        email: 'invalid-email',
-      });
-
-      expect(invalidEmailResult.isOk).toBe(false);
-      expect(invalidEmailResult.error).toBeDefined();
-      expect(invalidEmailResult.error?.message).toContain('Invalid email format');
+      // 홀수 입력 테스트
+      const app2 = workflow.compile('start');
+      const result2 = await app2.run(5);
+      expect(result2.output).toBe('5 is odd');
     });
 
-    test('should allow more complex parameters validations', async () => {
-      // Define a more complex parameters with nested objects and arrays
-      const orderparameters = z.object({
-        orderId: z.string().uuid(),
-        customer: z.object({
-          id: z.number(),
-          name: z.string(),
-          isPremium: z.boolean().default(false),
-        }),
-        items: z
-          .array(
-            z.object({
-              id: z.number(),
-              name: z.string(),
-              price: z.number().positive(),
-              quantity: z.number().int().positive(),
-            })
-          )
-          .min(1, 'Order must contain at least one item'),
-        shippingAddress: z.object({
-          street: z.string(),
-          city: z.string(),
-          zipCode: z.string(),
-        }),
-      });
-
-      // Create a workflow with the complex parameters
+    it('동적 라우팅에서 객체 형식으로 반환할 수 있어야 함', async () => {
       const workflow = createGraph()
         .addNode({
-          name: 'validateOrder',
-          execute: (input) => input,
-          parameters: orderparameters,
+          name: 'start',
+          execute: (input: number) => input,
         })
         .addNode({
-          name: 'calculateTotal',
-          execute: (order) => {
-            const subtotal = order.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+          name: 'process',
+          execute: (input: { value: number; multiplier: number }) => input.value * input.multiplier,
+        })
+        .dynamicEdge('start', (output) => {
+          return {
+            name: 'process',
+            input: { value: output, multiplier: 3 },
+          };
+        });
 
-            // Apply discount for premium customers
-            const discount = order.customer.isPremium ? 0.1 : 0;
+      const app = workflow.compile('start');
 
-            return {
-              orderId: order.orderId,
-              customerName: order.customer.name,
-              subtotal,
-              discount: subtotal * discount,
-              total: subtotal * (1 - discount),
-            };
+      const result = await app.run(5);
+
+      expect(result.output).toBe(15); // 5 * 3 = 15
+    });
+
+    it('동적 라우팅에서 undefined 반환 시 워크플로우가 종료되어야 함', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'never',
+          execute: () => 'Should not reach here',
+        })
+        .dynamicEdge(
+          'start',
+          graphNodeRouter(() => {
+            return undefined;
+          })
+        );
+
+      const app = workflow.compile('start');
+      const result = await app.run(5);
+
+      expect(result.output).toBe(5);
+      expect(result.histories).toHaveLength(1);
+    });
+  });
+
+  describe('5. 오류 처리', () => {
+    it('노드 실행 중 오류 발생 시 워크플로우가 실패해야 함', async () => {
+      const workflow = createGraph().addNode({
+        name: 'start',
+        execute: () => {
+          throw new Error('Test error');
+        },
+      });
+
+      const app = workflow.compile('start');
+
+      const result = await app.run(5);
+      expect(result.isOk).toBe(false);
+      expect(result.error).toBeInstanceOf(Error);
+      expect(result.error?.message).toBe('Test error');
+    });
+
+    it('존재하지 않는 노드에 엣지를 추가하면 오류가 발생해야 함', () => {
+      const workflow = createGraph().addNode({
+        name: 'start',
+        execute: (input: number) => input,
+      });
+      workflow.edge('start', 'nonexistent' as any);
+      expect(() => workflow.compile('start')).toThrow();
+    });
+
+    it('최대 노드 방문 횟수를 초과하면 오류가 발생해야 함', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'nodeA',
+          execute: (input: number) => input + 1,
+        })
+        .addNode({
+          name: 'nodeB',
+          execute: (input: number) => input + 1,
+        })
+        .edge('nodeA', 'nodeB')
+        .edge('nodeB', 'nodeA');
+
+      const app = workflow.compile('nodeA');
+
+      const result = await app.run(0, { maxNodeVisits: 5 });
+
+      expect(result.isOk).toBe(false);
+      expect(result.error?.message).toContain('Maximum node visits exceeded');
+    });
+
+    it('타임아웃 시 워크플로우가 실패해야 함', async () => {
+      const workflow = createGraph().addNode({
+        name: 'slow',
+        execute: async (input: number) => {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return input;
+        },
+      });
+
+      const app = workflow.compile('slow');
+      const result = await app.run(5, { timeout: 50 });
+
+      expect(result.isOk).toBe(false);
+      expect(result.error?.message).toContain('Timeout');
+    });
+  });
+
+  describe('6. 병렬 실행 및 병합 노드', () => {
+    it('기본적인 병합 노드가 작동해야 함', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'branchA',
+          execute: async (input: number) => delay(3000).then(() => String(input * 2)),
+        })
+        .addNode({
+          name: 'branchB',
+          execute: async (input: number) => delay(3000).then(() => String(input + 10)),
+        })
+        .addMergeNode({
+          name: 'merge',
+          sources: ['branchA', 'branchB'],
+          execute: (inputs) => {
+            return Number(inputs.branchA) + Number(inputs.branchB);
           },
         })
-        .edge('validateOrder', 'calculateTotal');
+        .edge('start', ['branchA', 'branchB']);
+      const app = workflow.compile('start');
 
-      const app = workflow.compile('validateOrder', 'calculateTotal');
+      const result = await app.run(5);
 
-      // Valid complex data
-      const validOrder = {
-        orderId: '123e4567-e89b-12d3-a456-426614174000',
-        customer: {
-          id: 123,
-          name: 'Jane Doe',
-          isPremium: true,
-        },
-        items: [
-          { id: 1, name: 'Product A', price: 25.99, quantity: 2 },
-          { id: 2, name: 'Product B', price: 10.5, quantity: 1 },
-        ],
-        shippingAddress: {
-          street: '123 Main St',
-          city: 'Anytown',
-          zipCode: '12345',
-        },
-      };
+      expect(result.isOk).toBe(true);
+      // (5 * 2) + (5 + 10) = 10 + 15 = 25
+      expect(result.output).toBe(25);
+      expect(result.histories).toHaveLength(4);
+    }, 10000);
 
-      const validResult = await app.run(validOrder);
-      expect(validResult.isOk).toBe(true);
-      expect(validResult.output).toEqual({
-        orderId: validOrder.orderId,
-        customerName: 'Jane Doe',
-        subtotal: 25.99 * 2 + 10.5,
-        discount: (25.99 * 2 + 10.5) * 0.1,
-        total: (25.99 * 2 + 10.5) * 0.9,
-      });
-
-      // Invalid - missing items
-      const invalidOrder1 = {
-        ...validOrder,
-        items: [],
-      };
-
-      const invalidResult1 = await app.run(invalidOrder1);
-      expect(invalidResult1.isOk).toBe(false);
-      expect(invalidResult1.error?.message).toContain('Order must contain at least one item');
-
-      // Invalid - negative price
-      const invalidOrder2 = {
-        ...validOrder,
-        items: [{ id: 1, name: 'Product A', price: -25.99, quantity: 2 }],
-      };
-
-      const invalidResult2 = await app.run(invalidOrder2);
-      expect(invalidResult2.isOk).toBe(false);
-    });
-
-    test('should validate input in hooks', async () => {
-      // Define parameterss
-      const numberparameters = z.number().positive();
-
-      // Create main workflow with validated node
-      const workflow = createGraph().addNode({
-        name: 'main',
-        execute: (input: number) => input * 2,
-        parameters: numberparameters,
-      });
-
-      const app = workflow.compile('main');
-
-      // Create a hook with validated node
-      const hook = app.attachHook('main').addNode({
-        name: 'hook',
-        execute: (input: number) => `Result: ${input}`,
-        parameters: numberparameters, // Same parameters as parent
-      });
-
-      const connector = hook.compile('hook');
-
-      // Setup hook result tracking
-      const lockUtil = createLock();
-      const hookResults: any[] = [];
-      const hookErrors: Error[] = [];
-
-      connector.connect({
-        onResult: (result) => {
-          if (result.isOk) {
-            hookResults.push(result.output);
-          } else {
-            hookErrors.push(result.error);
-          }
-          lockUtil.unlock();
-        },
-      });
-
-      // Test with valid input for both main and hook
-      await app.run(10);
-      await lockUtil.wait();
-      expect(hookResults).toEqual(['Result: 20']);
-
-      // Test with invalid input (should fail at main node)
-      const invalidResult = await app.run(-5);
-      expect(invalidResult.isOk).toBe(false);
-
-      // Hook shouldn't execute since main failed
-      expect(hookResults.length).toBe(1);
-    });
-  });
-
-  describe('Hooks', () => {
-    test('should attach and execute hooks', async () => {
-      // Create the main workflow
+    it('한 브랜치의 결과가 다른 브랜치로 영향을 주지 않아야 함', async () => {
       const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'main',
-            execute: (input: number) => input * 2,
-          })
-        )
-        .compile('main');
-
-      const lockUtil = createLock();
-
-      const hookResults: GraphResult<any>[] = [];
-
-      // Create a hook using the attachHook method from the compiled workflow
-      const hookConnector = workflow
-        .attachHook('main')
-        .addNode(
-          node({
-            name: 'hook',
-            execute: (input: number) => input + 5,
-          })
-        )
-        .compile('hook');
-
-      // Connect the hook with result handler
-      hookConnector.connect({
-        onResult: (result) => {
-          hookResults.push(result);
-          lockUtil.unlock(); // Unlock when hook execution completes
-        },
-      });
-      lockUtil.lock();
-      workflow.run(10);
-
-      // Wait for the hook to complete
-      await lockUtil.wait();
-
-      // Now we can safely check the hook results
-      expect(hookResults.length).toBe(1);
-      expect(hookResults[0].isOk).toBe(true);
-      expect(hookResults[0].output).toBe(25); // (10 * 2) + 5
-    });
-
-    test('should disconnect hooks', async () => {
-      // Create the main workflow
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'main',
-            execute: (input: number) => input * 2,
-          })
-        )
-        .compile('main');
-
-      const lockUtil = createLock();
-      const hookResults: GraphResult<any>[] = [];
-
-      // Attach a hook to the compiled workflow
-      const hookConnector = workflow
-        .attachHook('main')
-        .addNode(
-          node({
-            name: 'hook',
-            execute: (input: number) => input + 5,
-          })
-        )
-        .compile('hook');
-
-      // Connect the hook with result handler
-      hookConnector.connect({
-        onResult: (result) => {
-          hookResults.push(result);
-          lockUtil.unlock();
-        },
-      });
-      // Run the workflow and wait for the hook
-      lockUtil.lock();
-      await workflow.run(10);
-      await lockUtil.wait();
-      expect(hookResults.length).toBe(1);
-
-      // Disconnect the hook
-      hookConnector.disconnect();
-      // Run the workflow again
-      await workflow.run(10);
-
-      // Check that no new hook results were added
-      expect(hookResults.length).toBe(1);
-    });
-
-    test('should support multi-node hook workflows', async () => {
-      // Create the main workflow
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'main',
-            execute: (input: string) => input.toUpperCase(),
-          })
-        )
-        .compile('main');
-
-      const lockUtil = createLock();
-      let hookOutput: string | undefined;
-
-      // Attach a multi-node hook to the compiled workflow
-      const hookConnector = workflow
-        .attachHook('main')
-        .addNode(
-          node({
-            name: 'hook1',
-            execute: (input: string) => input.toLowerCase(),
-          })
-        )
-        .addNode(
-          node({
-            name: 'hook2',
-            execute: (input: string) => `transformed: ${input}`,
-          })
-        )
-        .edge('hook1', 'hook2')
-        .compile('hook1', 'hook2');
-
-      // Connect the hook with result handler
-      hookConnector.connect({
-        onResult: (result) => {
-          if (result.isOk) {
-            hookOutput = result.output;
-          }
-          lockUtil.unlock();
-        },
-      });
-
-      // Run the workflow and wait for the hook to complete
-      lockUtil.lock();
-      await workflow.run('Hello');
-      await lockUtil.wait();
-
-      expect(hookOutput).toBe('transformed: hello');
-    });
-  });
-
-  describe('Complex Workflows', () => {
-    test('should handle multi-node workflows with various edge types', async () => {
-      interface UserData {
-        name: string;
-        age: number;
-      }
-
-      const workflow = createGraph()
-        .addNode(
-          node({
-            name: 'input',
-            execute: (input: UserData) => input,
-          })
-        )
-        .addNode(
-          node({
-            name: 'validate',
-            execute: (input: UserData) => {
-              if (!input.name) throw new Error('Name is required');
-              if (input.age < 0) throw new Error('Age must be positive');
-              return input;
-            },
-          })
-        )
-        .addNode(
-          node({
-            name: 'processMajor',
-            execute: (input: UserData) => `${input.name} is an adult (${input.age})`,
-          })
-        )
-        .addNode(
-          node({
-            name: 'processMinor',
-            execute: (input: UserData) => `${input.name} is a minor (${input.age})`,
-          })
-        )
-        .addNode(
-          node({
-            name: 'output',
-            execute: (input: string) => ({ message: input }),
-          })
-        )
-        .edge('input', 'validate')
-        .dynamicEdge('validate', ({ output }) => {
-          return output.age >= 18 ? 'processMajor' : 'processMinor';
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
         })
-        .edge('processMajor', 'output')
-        .edge('processMinor', 'output')
-        .compile('input', 'output');
+        .addNode({
+          name: 'branchA',
+          execute: (input: number) => {
+            // 고의적으로 오래 걸리는 연산
+            return new Promise((resolve) => setTimeout(() => resolve(input * 2), 50));
+          },
+        })
+        .addNode({
+          name: 'branchB',
+          execute: (input: number) => input + 5,
+        })
+        .addMergeNode({
+          name: 'merge',
+          sources: ['branchA', 'branchB'],
+          execute: (inputs) => {
+            return [inputs.branchA, inputs.branchB];
+          },
+        })
+        .edge('start', ['branchA', 'branchB']);
 
-      const adultResult = await workflow.run({ name: 'John', age: 25 });
-      expect(adultResult.isOk).toBe(true);
-      expect(adultResult.output).toEqual({ message: 'John is an adult (25)' });
+      const app = workflow.compile('start');
+      const result = await app.run(5);
 
-      const minorResult = await workflow.run({ name: 'Jane', age: 15 });
-      expect(minorResult.isOk).toBe(true);
-      expect(minorResult.output).toEqual({ message: 'Jane is a minor (15)' });
+      expect(result.isOk).toBe(true);
+      expect(result.output).toEqual([10, 10]); // [5*2, 5+5]
+    });
 
-      const invalidResult = await workflow.run({ name: '', age: 20 });
-      expect(invalidResult.isOk).toBe(false);
-      expect(invalidResult.error?.message).toBe('Name is required');
+    it('병합 노드는 모든 소스 노드가 완료될 때까지 기다려야 함', async () => {
+      // 이 테스트에서는 소스 노드들의 실행 시간이 다름
+      const completionTimes: Record<string, number> = {};
+
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'fastBranch',
+          execute: async (input: number) => {
+            // 빨리 완료되는 브랜치
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            completionTimes.fastBranch = Date.now();
+            return input * 2;
+          },
+        })
+        .addNode({
+          name: 'slowBranch',
+          execute: async (input: number) => {
+            // 늦게 완료되는 브랜치
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            completionTimes.slowBranch = Date.now();
+            return input + 10;
+          },
+        })
+        .addMergeNode({
+          name: 'merge',
+          sources: ['fastBranch', 'slowBranch'],
+          execute: (inputs) => {
+            completionTimes.merge = Date.now();
+            return inputs;
+          },
+        })
+        .edge('start', ['fastBranch', 'slowBranch']);
+
+      const app = workflow.compile('start');
+      await app.run(5);
+
+      // 병합 노드는 가장 느린 브랜치보다 나중에 실행되어야 함
+      expect(completionTimes.merge).toBeGreaterThanOrEqual(completionTimes.slowBranch);
+      expect(completionTimes.merge).toBeGreaterThan(completionTimes.fastBranch);
+    });
+
+    it('한 브랜치에서 오류가 발생하면 전체 워크플로우가 실패해야 함', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'goodBranch',
+          execute: (input: number) => input * 2,
+        })
+        .addNode({
+          name: 'errorBranch',
+          execute: () => {
+            throw new Error('Branch execution failed');
+          },
+        })
+        .addMergeNode({
+          name: 'merge',
+          sources: ['goodBranch', 'errorBranch'],
+          execute: (inputs) => inputs,
+        })
+        .edge('start', ['goodBranch', 'errorBranch']);
+
+      const app = workflow.compile('start');
+      runnerDebug(app);
+      const result = await app.run(5);
+
+      expect(result.isOk).toBe(false);
+      expect(result.histories.some((h) => h.node.name == 'merge')).toBe(false);
+      expect(result.error?.message).toContain('Branch execution failed');
+    });
+
+    it('복잡한 병렬 및 순차 워크플로우가 올바르게 실행되어야 함', async () => {
+      // 여러 단계의 병렬 및 순차 실행을 결합한 복잡한 워크플로우
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'processA',
+          execute: (input: number) => input * 2,
+        })
+        .addNode({
+          name: 'processB',
+          execute: (input: number) => input + 5,
+        })
+        .addMergeNode({
+          name: 'merge1',
+          sources: ['processA', 'processB'],
+          execute: (inputs: { processA: number; processB: number }) => {
+            return inputs.processA + inputs.processB;
+          },
+        })
+        .addNode({
+          name: 'splitAgain',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'processC',
+          execute: (input: number) => input / 2,
+        })
+        .addNode({
+          name: 'processD',
+          execute: (input: number) => input - 3,
+        })
+        .addMergeNode({
+          name: 'finalMerge',
+          sources: ['processC', 'processD'],
+          execute: (inputs: { processC: number; processD: number }) => {
+            return [inputs.processC, inputs.processD];
+          },
+        })
+        .edge('start', ['processA', 'processB'])
+        .edge('merge1', 'splitAgain')
+        .edge('splitAgain', ['processC', 'processD']);
+
+      const app = workflow.compile('start');
+      const result = await app.run(5);
+
+      // 계산 과정:
+      // 1. start: 5
+      // 2. processA: 5*2=10, processB: 5+5=10
+      // 3. merge1: 10+10=20
+      // 4. splitAgain: 20
+      // 5. processC: 20/2=10, processD: 20-3=17
+      // 6. finalMerge: [10, 17]
+
+      expect(result.isOk).toBe(true);
+      expect(result.output).toEqual([10, 17]);
     });
   });
 });
