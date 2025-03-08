@@ -1,6 +1,14 @@
+export { graphNode, graphNodeRouter } from './core/helper';
+
 export { createGraph } from './core/registry';
 
+export { GraphConfigurationError, GraphDataError, GraphError, GraphErrorCode, GraphExecutionError } from './core/error';
+
 export type {
+  GraphNode,
+  GraphNodeEndEvent,
+  GraphNodeStartEvent,
+  RunOptions,
   GraphNodeHistory,
   GraphEvent,
   GraphEndEvent,
