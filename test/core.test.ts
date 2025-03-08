@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { GraphEvent } from '../src/interfaces';
 import { delay } from '../src/shared';
 import { graphNodeRouter } from '../src/core/helper';
-import { runnerDebug } from '../src/core/debug';
 import { createGraph } from '../src/core/registry';
+import { GraphConfigurationError } from '../src/core/error';
 
 describe('Workflow Module', () => {
   // 콘솔 오류 스파이 설정
@@ -299,7 +299,7 @@ describe('Workflow Module', () => {
       const result = await app.run(0, { maxNodeVisits: 5 });
 
       expect(result.isOk).toBe(false);
-      expect(result.error?.message).toContain('Maximum node visits exceeded');
+      expect(result.error?.message).toContain('Maximum node visits (5) exceeded for node "nodeB"');
     });
 
     it('타임아웃 시 워크플로우가 실패해야 함', async () => {
@@ -315,7 +315,7 @@ describe('Workflow Module', () => {
       const result = await app.run(5, { timeout: 50 });
 
       expect(result.isOk).toBe(false);
-      expect(result.error?.message).toContain('Timeout');
+      expect(result.error?.message).toContain('Graph execution timed out after 50ms');
     });
   });
 
@@ -332,7 +332,7 @@ describe('Workflow Module', () => {
         })
         .addNode({
           name: 'branchB',
-          execute: async (input: number) => delay(3000).then(() => String(input + 10)),
+          execute: async (input: number) => delay(4000).then(() => String(input + 10)),
         })
         .addMergeNode({
           name: 'merge',
@@ -343,7 +343,6 @@ describe('Workflow Module', () => {
         })
         .edge('start', ['branchA', 'branchB']);
       const app = workflow.compile('start');
-
       const result = await app.run(5);
 
       expect(result.isOk).toBe(true);
@@ -454,7 +453,6 @@ describe('Workflow Module', () => {
         .edge('start', ['goodBranch', 'errorBranch']);
 
       const app = workflow.compile('start');
-      runnerDebug(app);
       const result = await app.run(5);
 
       expect(result.isOk).toBe(false);
@@ -520,6 +518,105 @@ describe('Workflow Module', () => {
 
       expect(result.isOk).toBe(true);
       expect(result.output).toEqual([10, 17]);
+    });
+  });
+
+  describe('7. 그래프 구조 검증', () => {
+    it('존재하지 않는 시작 노드로 컴파일할 때 에러가 발생해야 함', () => {
+      const workflow = createGraph().addNode({
+        name: 'nodeA',
+        execute: (input: number) => input,
+      });
+
+      expect(() => workflow.compile('nonexistent')).toThrow(GraphConfigurationError);
+      expect(() => workflow.compile('nonexistent')).toThrow(/node.*not found/i);
+    });
+  });
+
+  describe('8. 고급 병합 노드 시나리오', () => {
+    it('중첩된 병합 노드가 올바르게 작동해야 함', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        // 첫 번째 레벨 분기
+        .addNode({
+          name: 'branch1A',
+          execute: (input: number) => input * 2,
+        })
+        .addNode({
+          name: 'branch1B',
+          execute: (input: number) => input + 3,
+        })
+        // 두 번째 레벨 분기
+        .addNode({
+          name: 'branch2A',
+          execute: (input: number) => input - 1,
+        })
+        .addNode({
+          name: 'branch2B',
+          execute: (input: number) => input * 3,
+        })
+        // 병합 노드
+        .addMergeNode({
+          name: 'merge1',
+          sources: ['branch1A', 'branch1B'],
+          execute: (inputs) => inputs.branch1A + inputs.branch1B,
+        })
+        .addMergeNode({
+          name: 'merge2',
+          sources: ['branch2A', 'branch2B'],
+          execute: (inputs) => inputs.branch2A + inputs.branch2B,
+        })
+        .addMergeNode({
+          name: 'finalMerge',
+          sources: ['merge1', 'merge2'],
+          execute: (inputs) => [inputs.merge1, inputs.merge2],
+        })
+        .edge('start', ['branch1A', 'branch1B', 'branch2A', 'branch2B']);
+
+      const app = workflow.compile('start');
+      const result = await app.run(5);
+
+      // 계산:
+      // branch1A: 5*2=10, branch1B: 5+3=8, merge1: 10+8=18
+      // branch2A: 5-1=4, branch2B: 5*3=15, merge2: 4+15=19
+      // finalMerge: [18, 19]
+      expect(result.output).toEqual([18, 19]);
+    });
+
+    it('병합 노드의 소스가 모두 완료되기 전에 종료 노드에 도달하면 완료된 소스만 처리되어야 함', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'fastBranch',
+          execute: (input: number) => input * 2,
+        })
+        .addNode({
+          name: 'slowBranch',
+          execute: async (input: number) => {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            return input + 10;
+          },
+        })
+        .addMergeNode({
+          name: 'merge',
+          sources: ['fastBranch', 'slowBranch'],
+          execute: (inputs) => {
+            return { ...inputs };
+          },
+        })
+        .edge('start', ['fastBranch', 'slowBranch']);
+
+      const app = workflow.compile('start', 'fastBranch');
+
+      const result = await app.run(5);
+
+      expect(result.output).toBe(10);
     });
   });
 });

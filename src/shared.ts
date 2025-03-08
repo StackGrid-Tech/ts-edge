@@ -10,11 +10,11 @@ export const randomId = () => {
   });
 };
 
-export const withTimeout = <T>(promise: PromiseLike<T>, ms: number, errorMessage?: string): Promise<T> => {
+export const withTimeout = <T>(promise: PromiseLike<T>, ms: number, error?: Error): Promise<T> => {
   let key;
   return new Promise<T>((ok, timeout) => {
     key = setTimeout(() => {
-      timeout(new Error(errorMessage ?? `Execution aborted: Timeout of ${ms}ms exceeded`));
+      timeout(error ?? new Error(`Execution aborted: Timeout of ${ms}ms exceeded`));
     }, ms);
     promise.then(
       (res) => ok(res),

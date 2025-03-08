@@ -12,7 +12,11 @@ import {
 import { createPubSub, randomId, withTimeout } from '../shared';
 import { createNodeExecutor } from './node-executor';
 import { createThreadPool } from './thread-pool';
+import { GraphExecutionError } from './error';
 
+/**
+ * Creates a runnable graph from a registry configuration
+ */
 export const createGraphRunnable = ({
   start,
   end,
@@ -27,21 +31,31 @@ export const createGraphRunnable = ({
   return {
     subscribe,
     unsubscribe,
+
+    /**
+     * Returns the structure of the graph for visualization
+     */
     getStructure() {
       return Array.from(registry.entries()).map(([name, item]) => ({
         name,
         edge: item.edge
           ? {
-              name: item.edge.type == 'direct' ? item.edge.next : undefined,
+              name: item.edge.type === 'direct' ? item.edge.next : undefined,
               type: item.edge.type,
             }
           : undefined,
       })) as GraphStructure;
     },
+
+    /**
+     * Executes the graph with the provided input
+     */
     async run(input, options) {
       const opt: RunOptions = { timeout: 600000, maxNodeVisits: 100, ...(options as any) };
       const executionId = randomId();
       const startedAt = Date.now();
+
+      // Map from source nodes to their target merge nodes
       const sourceToMergeNodeMap = Array.from(registry.entries()).reduce(
         (prev, [name, context]) => {
           context.sources?.forEach((branchNodeName) => {
@@ -52,20 +66,27 @@ export const createGraphRunnable = ({
         {} as Record<string, string>
       );
 
+      // History of node executions
       const histories: GraphNodeHistory[] = [];
 
-      const recordExecution = (h) => {
-        histories.push(h);
+      const recordExecution = (history: GraphNodeHistory) => {
+        histories.push(history);
       };
 
+      /**
+       * Updates merge node status when a source node completes
+       * and returns the combined inputs if all sources are ready
+       */
       const processMergeNode = (nodeName: string, sourceNodeName: string, output: any) => {
         const status = mergeNodeStatus.get(nodeName)!;
         const sourceNode = status.find((v) => v.source === sourceNodeName)!;
         sourceNode.pending = false;
         sourceNode.output = output;
 
+        // If any source is still pending, wait for it
         if (status.some((v) => v.pending)) return null;
 
+        // Combine all source outputs into a single input object
         const mergeInput = status.reduce((prev, v) => {
           prev[v.source] = v.output;
           return prev;
@@ -74,6 +95,7 @@ export const createGraphRunnable = ({
         return mergeInput;
       };
 
+      // Initialize status tracking for merge nodes
       const mergeNodeStatus = Array.from(registry.entries()).reduce(
         (prev, [name, context]) => {
           if (context.isMergeNode) {
@@ -100,35 +122,56 @@ export const createGraphRunnable = ({
 
       const threadPool = createThreadPool();
 
-      const executeNode = (threadId: string, name: string, input: any) => {
+      /**
+       * Schedules a node for execution in the thread pool
+       */
+      const scheduleNodeExecution = (threadId: string, name: string, input: any) => {
         threadPool.scheduleTask(threadId, async () => {
           const nodeContext = registry.get(name);
+
+          if (!nodeContext) {
+            throw GraphExecutionError.nodeExecutionFailed(name, new Error(`Node not found: "${name}"`), input);
+          }
+
+          // Check for maximum node visits
+          if (opt.maxNodeVisits-- <= 0) {
+            throw GraphExecutionError.maxVisitsExceeded(name, options?.maxNodeVisits || 100);
+          }
 
           const execute = createNodeExecutor({
             executionId,
             name,
             end,
             baseBranch: sourceToMergeNodeMap[name],
-            node: nodeContext!,
+            node: nodeContext,
             recordExecution,
             publishEvent: publish,
           });
 
-          if (opt.maxNodeVisits-- <= 0) throw new Error(`Maximum node visits exceeded`);
           const { name: nextNodes, output } = await execute(input);
 
-          const threadIds = [Array.from({ length: nextNodes.length }).map(randomId), threadId].flat();
+          // Allocate thread IDs for child nodes
+          const allocateThreadIds = () => {
+            // Create new thread IDs for each next node
+            const newThreadIds = nextNodes.map(() => randomId());
+            // Current thread ID can be reused
+            return [...newThreadIds, threadId];
+          };
 
+          const threadIds = allocateThreadIds();
           const getThreadId = () => threadIds.pop()!;
 
+          // Process each next node
           nextNodes.forEach(async (nextName) => {
             if (!mergeNodeStatus.has(nextName)) {
-              return executeNode(getThreadId(), nextName, output);
+              // Normal node - execute directly
+              return scheduleNodeExecution(getThreadId(), nextName, output);
             }
 
+            // Merge node - check if all sources are ready
             const mergeInput = processMergeNode(nextName, name, output);
             if (mergeInput) {
-              return executeNode(getThreadId(), nextName, mergeInput);
+              return scheduleNodeExecution(getThreadId(), nextName, mergeInput);
             }
           });
 
@@ -136,6 +179,9 @@ export const createGraphRunnable = ({
         });
       };
 
+      /**
+       * Emits the graph start event
+       */
       const emitGraphStartEvent = () => {
         publish({
           eventType: 'WORKFLOW_START',
@@ -145,6 +191,9 @@ export const createGraphRunnable = ({
         } as GraphStartEvent);
       };
 
+      /**
+       * Emits the graph end event
+       */
       const emitGraphEndEvent = (result: SafeResult) => {
         publish({
           eventType: 'WORKFLOW_END',
@@ -158,12 +207,20 @@ export const createGraphRunnable = ({
         } as GraphEndEvent);
       };
 
+      /**
+       * Converts the execution result to a GraphResult
+       */
       const toResult = (isOk: boolean) => (output: unknown) => {
+        if (end && histories.at(-1)?.node.name != end) {
+          console.log({ end, lastNode: histories.at(-1)?.node.name });
+          const endNode = [...histories].reverse().find((n) => n.node.name == end)?.node;
+          if (endNode) output = endNode.output;
+        }
         return {
           startedAt,
           endedAt: Date.now(),
           histories,
-          error: isOk ? undefined : output,
+          error: isOk ? undefined : output instanceof Error ? output : new Error(String(output)),
           output: isOk ? output : undefined,
           isOk,
         } as GraphResult<never, never>;
@@ -175,11 +232,12 @@ export const createGraphRunnable = ({
             withTimeout(
               safe()
                 .watch(emitGraphStartEvent)
-                .map(executeNode.bind(null, randomId(), start, input))
+                .map(scheduleNodeExecution.bind(null, randomId(), start, input))
                 .map(threadPool.waitForCompletion)
                 .watch(emitGraphEndEvent)
                 .unwrap() as never,
-              Math.max(0, opt.timeout)
+              Math.max(0, opt.timeout),
+              GraphExecutionError.timeout(opt.timeout)
             ) as Promise<never>
         )
         .map(toResult(true))
