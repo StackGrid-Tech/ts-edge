@@ -9,9 +9,9 @@ export const createGraph = (): GraphRegistry => {
     Array.from(context.entries()).forEach(([nodeName, node]) => {
       // Validate source nodes for merge nodes
       if (node.isMergeNode) {
-        const invalidSources = node.sources.filter((sourceName) => !context.has(sourceName));
-        if (invalidSources.length > 0) {
-          throw GraphConfigurationError.invalidMergeSources(nodeName, invalidSources);
+        const invalidBranch = node.branch.filter((sourceName) => !context.has(sourceName));
+        if (invalidBranch.length > 0) {
+          throw GraphConfigurationError.invalidMergeBranch(nodeName, invalidBranch);
         }
       }
       // Validate target nodes for direct edges
@@ -52,7 +52,7 @@ export const createGraph = (): GraphRegistry => {
       context.set(node.name, {
         execute: node.execute,
         isMergeNode: true,
-        sources: node.sources,
+        branch: node.branch,
       });
 
       return registry;

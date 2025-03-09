@@ -356,15 +356,16 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
   }): GraphRegistry<T | GraphNode<Name, Input, Output>, Connected>;
 
   /**
-   * Adds a merge node that combines outputs from multiple source nodes.
+   * Adds a merge node that combines outputs from multiple branch nodes.
+   * This overload accepts a single configuration object.
    *
-   * @param node - Merge node configuration
+   * @param mergeNode - Complete merge node configuration including branches and execution logic
    * @returns Updated graph registry
    */
-  addMergeNode<Name extends string = string, NodeNames extends T['name'][] = T['name'][], Output = any>(node: {
+  addMergeNode<Name extends string, Branch extends T['name'][], Output = any>(mergeNode: {
+    branch: Branch;
     name: Name;
-    sources: NodeNames;
-    execute: (inputs: { [K in NodeNames[number]]: OutputOf<T, K> }) => Output;
+    execute: (inputs: { [K in Branch[number]]: OutputOf<T, K> }) => Output;
   }): GraphRegistry<T | GraphNode<Name, any, Output>, Connected>;
 
   /**
@@ -418,6 +419,6 @@ export type GraphNodeContext = {
         type: 'dynamic';
         next: Function;
       };
-} & ({ isMergeNode: true; sources: string[] } | { isMergeNode: false; sources?: string[] });
+} & ({ isMergeNode: true; branch: string[] } | { isMergeNode: false; branch?: string[] });
 
 export type GraphRegistryContext = Map<string, GraphNodeContext>;

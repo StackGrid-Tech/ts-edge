@@ -2,9 +2,14 @@
 
 English | [한국어](./docs/kr.md)
 
-A lightweight, type-safe workflow engine for TypeScript that helps you create flexible, reusable graph-based execution flows. Inspired by directed graph execution patterns in AI systems and data pipelines, ts-edge provides a simple yet powerful framework for defining complex computational workflows with robust type safety.
+A lightweight workflow engine for TypeScript that lets you create graph-based execution flows with type safety and minimal complexity.
 
-With ts-edge, you can model your business logic as a series of interconnected nodes, each processing data and passing results to the next stage. This approach brings clarity to complex processes, enables better organization of code, and facilitates powerful patterns like conditional branching, parallel processing, and result merging.
+## Features
+
+- **Lightweight**: Minimal API and options that you can learn and apply quickly
+- **Advanced Type Inference**: Compile-time validation ensures nodes can only connect when their input/output types match
+- **Simple API**: Provides only essential functionality for ease of use
+- **Flexible workflows**: Supports various patterns like conditional branching, parallel processing, and result merging
 
 ## Quick Start
 
@@ -60,12 +65,6 @@ ts-edge lets you define computational workflows as directed graphs, where:
 - **Dynamic routing** makes decisions based on node outputs
 - **Parallel execution** and **merge nodes** enable complex patterns
 
-Perfect for:
-- AI agent workflows
-- ETL pipelines
-- Business process automation
-- Multi-step data processing
-
 
 ## Installation
 
@@ -92,61 +91,6 @@ const workflow = createGraph()
   .edge('nodeA', 'nodeB');
 ```
 
-### Creating Reusable Nodes with `graphNode`
-
-For better organization and reusability, you can define nodes separately using the `graphNode` helper:
-
-```typescript
-import { graphNode } from 'ts-edge';
-
-// Define reusable nodes in a separate file
-export const fetchUserNode = graphNode({
-  name: 'fetchUser',
-  execute: async (userId: string) => {
-    const user = await userService.getUser(userId);
-    return { user };
-  }
-});
-
-export const validateUserNode = graphNode({
-  name: 'validateUser',
-  execute: (data: { user: User }) => {
-    const isValid = data.user.status === 'active';
-    return { ...data, isValid };
-  }
-});
-
-// Then use them in your workflow
-const workflow = createGraph()
-  .addNode(fetchUserNode)
-  .addNode(validateUserNode)
-  .edge('fetchUser', 'validateUser');
-```
-
-The `graphNode` helper provides better type inference for your nodes.
-
-### Dynamic Routing with `graphNodeRouter`
-
-For type-safe dynamic routing, you can use the `graphNodeRouter` helper:
-
-```typescript
-import { graphNodeRouter } from 'ts-edge';
-
-const userRouter = graphNodeRouter((data) => {
-  if (data.isValid) {
-    return 'processValidUser';
-  } else {
-    return {
-      name: 'handleInvalidUser',
-      input: { userId: data.user.id, reason: 'User is not active' }
-    };
-  }
-});
-
-workflow.dynamicEdge('validateUser', userRouter);
-```
-
-This approach keeps your routing logic organized and enables better type checking.
 
 ### Dynamic Routing
 
@@ -193,7 +137,7 @@ const workflow = createGraph()
   })
   .addMergeNode({
     name: 'combineResults',
-    sources: ['processBranch1', 'processBranch2'],
+    branch: ['processBranch1', 'processBranch2'],
     execute: (inputs) => ({
       result: {
         summary: inputs.processBranch1.summary,
@@ -219,7 +163,7 @@ const result = await app.run(input, {
 
 When compiling a workflow, you specify:
 - A required **start node** where execution begins
-- An optional **end node** where execution stops
+- An optional **end node** that explicitly marks the termination point
 
 ```typescript
 // Both start and end nodes specified
@@ -229,7 +173,11 @@ const app = workflow.compile('inputNode', 'outputNode');
 const app = workflow.compile('inputNode');
 ```
 
-When an end node is specified, the workflow returns that node's output. Otherwise, it returns the output of the last executed node.
+End node behavior:
+- **When an end node is specified**: The workflow terminates when it reaches the end node and returns that node's output.
+- **When no end node is specified**: The workflow runs until it reaches a leaf node (a node with no outgoing edges) and returns the output of the last executed node.
+
+Specifying an end node is useful in complex workflows where you need to define a specific termination point.
 
 ### Event Subscription
 
@@ -255,7 +203,54 @@ ts-edge provides a robust error handling system:
       console.error(result.error);
   }
 ```
+## Helper Functions
 
+These helpers let you define nodes separately for better organization and reusability across files.
+
+### `graphNode` - Create nodes
+
+```typescript
+import { graphNode } from 'ts-edge';
+
+// Create a node
+const userNode = graphNode({
+  name: 'getUser',
+  execute: (id: string) => fetchUser(id)
+});
+
+// Use in graph
+graph.addNode(userNode);
+```
+
+### `graphMergeNode` - Create merge nodes
+
+```typescript
+import { graphMergeNode } from 'ts-edge';
+
+// Create a merge node
+const mergeNode = graphMergeNode({
+  name: 'combine',
+  branches: ['userData', 'userStats'],
+  execute: (inputs) => ({ ...inputs.userData, stats: inputs.userStats })
+});
+
+// Use in graph
+graph.addMergeNode(mergeNode);
+```
+
+### `graphNodeRouter` - Create routers
+
+```typescript
+import { graphNodeRouter } from 'ts-edge';
+
+// Create a router
+const router = graphNodeRouter((data) => 
+  data.isValid ? 'success' : 'error'
+);
+
+// Use in graph
+graph.dynamicEdge('validate', router);
+```
 
 ## License
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import type { GraphEvent } from '../src/interfaces';
 import { delay } from '../src/shared';
-import { graphNodeRouter } from '../src/core/helper';
+import { graphMergeNode, graphNodeRouter } from '../src/core/helper';
 import { createGraph } from '../src/core/registry';
 import { GraphConfigurationError } from '../src/core/error';
 
@@ -336,7 +336,7 @@ describe('Workflow Module', () => {
         })
         .addMergeNode({
           name: 'merge',
-          sources: ['branchA', 'branchB'],
+          branch: ['branchA', 'branchB'],
           execute: (inputs) => {
             return Number(inputs.branchA) + Number(inputs.branchB);
           },
@@ -370,7 +370,7 @@ describe('Workflow Module', () => {
         })
         .addMergeNode({
           name: 'merge',
-          sources: ['branchA', 'branchB'],
+          branch: ['branchA', 'branchB'],
           execute: (inputs) => {
             return [inputs.branchA, inputs.branchB];
           },
@@ -413,7 +413,7 @@ describe('Workflow Module', () => {
         })
         .addMergeNode({
           name: 'merge',
-          sources: ['fastBranch', 'slowBranch'],
+          branch: ['fastBranch', 'slowBranch'],
           execute: (inputs) => {
             completionTimes.merge = Date.now();
             return inputs;
@@ -447,7 +447,7 @@ describe('Workflow Module', () => {
         })
         .addMergeNode({
           name: 'merge',
-          sources: ['goodBranch', 'errorBranch'],
+          branch: ['goodBranch', 'errorBranch'],
           execute: (inputs) => inputs,
         })
         .edge('start', ['goodBranch', 'errorBranch']);
@@ -477,7 +477,7 @@ describe('Workflow Module', () => {
         })
         .addMergeNode({
           name: 'merge1',
-          sources: ['processA', 'processB'],
+          branch: ['processA', 'processB'],
           execute: (inputs: { processA: number; processB: number }) => {
             return inputs.processA + inputs.processB;
           },
@@ -496,7 +496,7 @@ describe('Workflow Module', () => {
         })
         .addMergeNode({
           name: 'finalMerge',
-          sources: ['processC', 'processD'],
+          branch: ['processC', 'processD'],
           execute: (inputs: { processC: number; processD: number }) => {
             return [inputs.processC, inputs.processD];
           },
@@ -561,17 +561,17 @@ describe('Workflow Module', () => {
         // 병합 노드
         .addMergeNode({
           name: 'merge1',
-          sources: ['branch1A', 'branch1B'],
+          branch: ['branch1A', 'branch1B'],
           execute: (inputs) => inputs.branch1A + inputs.branch1B,
         })
         .addMergeNode({
           name: 'merge2',
-          sources: ['branch2A', 'branch2B'],
+          branch: ['branch2A', 'branch2B'],
           execute: (inputs) => inputs.branch2A + inputs.branch2B,
         })
         .addMergeNode({
           name: 'finalMerge',
-          sources: ['merge1', 'merge2'],
+          branch: ['merge1', 'merge2'],
           execute: (inputs) => [inputs.merge1, inputs.merge2],
         })
         .edge('start', ['branch1A', 'branch1B', 'branch2A', 'branch2B']);
@@ -587,6 +587,13 @@ describe('Workflow Module', () => {
     });
 
     it('병합 노드의 소스가 모두 완료되기 전에 종료 노드에 도달하면 완료된 소스만 처리되어야 함', async () => {
+      const mergeNode = graphMergeNode({
+        name: 'merge',
+        branch: ['fastBranch', 'slowBranch'],
+        execute: (inputs) => {
+          return { ...inputs };
+        },
+      });
       const workflow = createGraph()
         .addNode({
           name: 'start',
@@ -603,13 +610,7 @@ describe('Workflow Module', () => {
             return input + 10;
           },
         })
-        .addMergeNode({
-          name: 'merge',
-          sources: ['fastBranch', 'slowBranch'],
-          execute: (inputs) => {
-            return { ...inputs };
-          },
-        })
+        .addMergeNode(mergeNode)
         .edge('start', ['fastBranch', 'slowBranch']);
 
       const app = workflow.compile('start', 'fastBranch');

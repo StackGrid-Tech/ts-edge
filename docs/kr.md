@@ -1,8 +1,13 @@
 # 🔗 ts-edge 🔗
 
-TypeScript를 위한 가볍고 타입 안전한 워크플로우 엔진으로, 유연하고 재사용 가능한 그래프 기반 실행 흐름을 만들 수 있습니다. AI 시스템과 데이터 파이프라인의 방향성 그래프 실행 패턴에서 영감을 받은 ts-edge는 강력한 타입 안전성을 갖춘 복잡한 계산 워크플로우를 정의하기 위한 간단하면서도 강력한 프레임워크를 제공합니다.
+타입스크립트를 위한 경량화된 workflow 엔진으로, 복잡한 설정 없이 타입 안전성이 보장된 그래프 기반 실행 흐름을 만들 수 있습니다.
 
-ts-edge를 사용하면 비즈니스 로직을 상호 연결된 노드 시리즈로 모델링할 수 있으며, 각 노드는 데이터를 처리하고 결과를 다음 단계로 전달합니다. 이러한 접근 방식은 복잡한 프로세스를 명확하게 하고, 코드를 더 잘 구성할 수 있게 하며, 조건부 분기, 병렬 처리, 결과 병합과 같은 강력한 패턴을 용이하게 합니다.
+## 특징
+
+- **가벼움**: 최소한의 API와 옵션으로 빠르게 배우고 적용할 수 있습니다
+- **고급 타입 추론**: 컴파일 타임에 node 간 입출력 타입 호환성을 검증하여 안전한 연결을 보장합니다
+- **간결한 API**: 꼭 필요한 기능만 제공하여 쉽게 사용 가능합니다
+- **유연한 workflow**: 조건부 분기, 병렬 처리, 결과 병합 등 다양한 패턴을 지원합니다
 
 ## 빠른 시작
 
@@ -11,7 +16,7 @@ ts-edge를 사용하면 비즈니스 로직을 상호 연결된 노드 시리즈
 ```typescript
 import { createGraph } from 'ts-edge';
 
-// 간단한 AI 에이전트 워크플로우 정의
+// 간단한 AI 에이전트 workflow 정의
 const workflow = createGraph()
   .addNode({
     name: 'input',
@@ -42,7 +47,7 @@ const workflow = createGraph()
   })
   .edge('acting', 'output');
 
-// 워크플로우 컴파일 및 실행
+// workflow 컴파일 및 실행
 const app = workflow.compile('input', 'output');
 const result = await app.run('오늘 날씨는 어때요?');
 console.log(result.output); // { answer: "간단한 답변: 오늘 날씨는 어때요?" }
@@ -50,17 +55,12 @@ console.log(result.output); // { answer: "간단한 답변: 오늘 날씨는 어
 
 ## 개요
 
-ts-edge는 다음과 같은 방식으로 방향성 그래프로 계산 워크플로우를 정의할 수 있게 해줍니다:
-- **노드**: 데이터를 처리하고 출력을 생성
-- **엣지**: 노드 간의 흐름을 정의
-- **동적 라우팅**: 노드 출력을 기반으로 결정
-- **병렬 실행**과 **병합 노드**: 복잡한 패턴 구현
+ts-edge는 다음과 같은 방식으로 방향성 그래프로 계산 workflow를 정의할 수 있게 해줍니다:
+- **Node**: 데이터를 처리하고 출력을 생성
+- **Edge**: node 간의 흐름을 정의
+- **Dynamic routing**: node 출력을 기반으로 결정
+- **Parallel execution**과 **merge node**: 복잡한 패턴 구현
 
-다음과 같은 용도에 적합합니다:
-- AI 에이전트 워크플로우
-- ETL 파이프라인
-- 비즈니스 프로세스 자동화
-- 다단계 데이터 처리
 
 ## 설치
 
@@ -70,9 +70,9 @@ npm install ts-edge
 
 ## 주요 기능
 
-### 기본 노드 및 엣지 정의
+### 기본 Node 및 Edge 정의
 
-노드는 입력을 처리하고 출력을 생성합니다. 엣지는 노드 간의 흐름을 정의합니다.
+Node는 입력을 처리하고 출력을 생성합니다. Edge는 node 간의 흐름을 정의합니다.
 
 ```typescript
 const workflow = createGraph()
@@ -87,65 +87,9 @@ const workflow = createGraph()
   .edge('nodeA', 'nodeB');
 ```
 
-### `graphNode`로 재사용 가능한 노드 생성
+### Dynamic Routing
 
-더 나은 구조화와 재사용성을 위해 `graphNode` 헬퍼를 사용하여 노드를 별도로 정의할 수 있습니다:
-
-```typescript
-import { graphNode } from 'ts-edge';
-
-// 별도 파일에서 재사용 가능한 노드 정의
-export const fetchUserNode = graphNode({
-  name: 'fetchUser',
-  execute: async (userId: string) => {
-    const user = await userService.getUser(userId);
-    return { user };
-  }
-});
-
-export const validateUserNode = graphNode({
-  name: 'validateUser',
-  execute: (data: { user: User }) => {
-    const isValid = data.user.status === 'active';
-    return { ...data, isValid };
-  }
-});
-
-// 워크플로우에서 사용
-const workflow = createGraph()
-  .addNode(fetchUserNode)
-  .addNode(validateUserNode)
-  .edge('fetchUser', 'validateUser');
-```
-
-`graphNode` 헬퍼는 노드에 대한 더 나은 타입 추론을 제공합니다.
-
-### `graphNodeRouter`로 타입 안전한 동적 라우팅
-
-타입 안전한 동적 라우팅을 위해 `graphNodeRouter` 헬퍼를 사용할 수 있습니다:
-
-```typescript
-import { graphNodeRouter } from 'ts-edge';
-
-const userRouter = graphNodeRouter((data) => {
-  if (data.isValid) {
-    return 'processValidUser';
-  } else {
-    return {
-      name: 'handleInvalidUser',
-      input: { userId: data.user.id, reason: '사용자가 활성 상태가 아닙니다' }
-    };
-  }
-});
-
-workflow.dynamicEdge('validateUser', userRouter);
-```
-
-이 접근 방식은 라우팅 로직을 체계적으로 유지하고 더 나은 타입 검사를 가능하게 합니다.
-
-### 동적 라우팅
-
-노드 출력을 기반으로 실행 결정을 할 수 있습니다:
+Node 출력을 기반으로 실행 결정을 할 수 있습니다:
 
 ```typescript
 workflow.dynamicEdge('processData', (data) => {
@@ -155,7 +99,7 @@ workflow.dynamicEdge('processData', (data) => {
 });
 ```
 
-다음 노드에 수정된 입력을 전달할 수도 있습니다:
+다음 node에 수정된 입력을 전달할 수도 있습니다:
 
 ```typescript
 workflow.dynamicEdge('analyze', (data) => {
@@ -166,11 +110,11 @@ workflow.dynamicEdge('analyze', (data) => {
 });
 ```
 
-### 병렬 처리와 병합 노드
+### 병렬 처리와 Merge Node
 
 ![parallel](./parallel.png)
 
-병렬 브랜치에서 데이터를 처리하고 결과를 병합할 수 있습니다:
+병렬 branch에서 데이터를 처리하고 결과를 병합할 수 있습니다:
 
 ```typescript
 const workflow = createGraph()
@@ -188,7 +132,7 @@ const workflow = createGraph()
   })
   .addMergeNode({
     name: 'combineResults',
-    sources: ['processBranch1', 'processBranch2'],
+    branches: ['processBranch1', 'processBranch2'],
     execute: (inputs) => ({
       result: {
         summary: inputs.processBranch1.summary,
@@ -201,7 +145,7 @@ const workflow = createGraph()
 
 ### 실행 옵션
 
-워크플로우의 동작을 제어할 수 있습니다:
+Workflow의 동작을 제어할 수 있습니다:
 
 ```typescript
 const result = await app.run(input, {
@@ -209,31 +153,35 @@ const result = await app.run(input, {
   maxNodeVisits: 50,        // 무한 루프 방지
 });
 ```
+### Start Node와 End Node
 
-### 시작 및 종료 노드
-
-워크플로우를 컴파일할 때 다음을 지정합니다:
-- 필수 **시작 노드**: 실행이 시작되는 곳
-- 선택적 **종료 노드**: 실행이 중지되는 곳
+Workflow를 컴파일할 때 다음을 지정합니다:
+- 필수 **start node**: 실행이 시작되는 곳
+- 선택적 **end node**: 명시적으로 지정한 종료 지점
 
 ```typescript
-// 시작 및 종료 노드 모두 지정
+// start node와 end node 모두 지정
 const app = workflow.compile('inputNode', 'outputNode');
 
-// 시작 노드만 지정 - 나가는 엣지가 없는 노드까지 실행
+// start node만 지정 - 나가는 edge가 없는 node까지 실행
 const app = workflow.compile('inputNode');
 ```
 
-종료 노드가 지정되면 워크플로우는 해당 노드의 출력을 반환합니다. 그렇지 않으면 마지막으로 실행된 노드의 출력을 반환합니다.
+End node 동작 방식:
+- **End node를 지정한 경우**: workflow가 end node에 도달하면 즉시 종료되고, 해당 node의 출력이 반환됩니다.
+- **End node를 지정하지 않은 경우**: 더 이상 나가는 edge가 없는 node(리프 node)에 도달할 때까지 실행되며, 마지막으로 실행된 node의 출력이 반환됩니다.
 
-### 이벤트 구독
+End node를 지정하면 특정 지점에서 workflow를 강제로 종료할 수 있어 복잡한 workflow에서 유용합니다.
 
-이벤트로 워크플로우 실행을 모니터링할 수 있습니다:
+
+### Event 구독
+
+Event로 workflow 실행을 모니터링할 수 있습니다:
 
 ```typescript
 app.subscribe((event) => {
   if (event.eventType === 'NODE_START') {
-    console.log(`노드 시작: ${event.node.name}`);
+    console.log(`Node 시작: ${event.node.name}`);
   }
 });
 ```
@@ -244,9 +192,57 @@ app.subscribe((event) => {
   const result = await app.run(input);
   if (result.isOk) {
     console.log(result.output)
-  }else {
+  } else {
       console.error(result.error);
   }
+```
+## Helper 함수
+
+이 helper 함수들은 node를 별도로 정의하여 코드 구성을 개선하고, 여러 파일에서 재사용할 수 있게 해줍니다.
+
+### `graphNode` - Node 생성
+
+```typescript
+import { graphNode } from 'ts-edge';
+
+// Node 생성
+const userNode = graphNode({
+  name: 'getUser',
+  execute: (id: string) => fetchUser(id)
+});
+
+// 그래프에서 사용
+graph.addNode(userNode);
+```
+
+### `graphMergeNode` - Merge Node 생성
+
+```typescript
+import { graphMergeNode } from 'ts-edge';
+
+// Merge node 생성
+const mergeNode = graphMergeNode({
+  name: 'combine',
+  branches: ['userData', 'userStats'] as const,
+  execute: (inputs) => ({ ...inputs.userData, stats: inputs.userStats })
+});
+
+// 그래프에서 사용
+graph.addMergeNode(mergeNode);
+```
+
+### `graphNodeRouter` - Router 생성
+
+```typescript
+import { graphNodeRouter } from 'ts-edge';
+
+// Router 생성
+const router = graphNodeRouter((data) => 
+  data.isValid ? 'success' : 'error'
+);
+
+// 그래프에서 사용
+graph.dynamicEdge('validate', router);
 ```
 
 ## 라이선스

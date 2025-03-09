@@ -1,4 +1,4 @@
-import { GraphNode, GraphNodeRouter } from '../interfaces';
+import { GraphNodeRouter } from '../interfaces';
 
 export const graphNode = <Name extends string = string, Input = any, Output = any>(node: {
   name: Name;
@@ -16,16 +16,12 @@ export namespace graphNode {
     : never;
 }
 
-/**
- * A flexible type definition for node router functions.
- * This type is used to bypass the strict type constraints of router functions.
- * It intentionally applies a loose type to balance between type safety and ease of use.
- *
- * @remarks
- * The actual type checking is performed when the `dynamicEdge` method is called.
- * Therefore, even though the type is loosened here, appropriate type checking
- * still occurs at the point of usage.
- */
-export type FlexibleRouterType = any;
+export const graphNodeRouter = (router: GraphNodeRouter<any, any, any>) => router as GraphNodeRouter<any, never, never>;
 
-export const graphNodeRouter = (router: GraphNodeRouter<GraphNode, string, string>) => router as FlexibleRouterType;
+export const graphMergeNode = <Name extends string, Branch extends readonly string[], Output = any>(mergedNode: {
+  branch: [...Branch];
+  name: Name;
+  execute: (inputs: { [K in Branch[number]]: any }) => Output;
+}) => {
+  return mergedNode;
+};

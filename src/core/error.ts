@@ -11,7 +11,7 @@ export enum GraphErrorCode {
   INVALID_EDGE = 'Invalid edge configuration',
   MISSING_SOURCE_NODE = 'Source node not found for edge',
   DUPLICATE_EDGE = 'Node already has an outgoing connection',
-  MERGE_NODE_MISSING_SOURCES = 'Merge node references non-existent source nodes',
+  MERGE_NODE_MISSING_BRANCH = 'Merge node references non-existent source nodes',
 
   // Runtime Errors (2000-2999)
   MAX_NODE_VISITS_EXCEEDED = 'Maximum node visits exceeded',
@@ -137,13 +137,13 @@ export class GraphConfigurationError extends GraphError {
   }
 
   /**
-   * Creates an error for invalid merge node sources
+   * Creates an error for invalid merge node branch
    */
-  static invalidMergeSources(nodeName: string, missingSources: string[]): GraphConfigurationError {
-    return new GraphConfigurationError(GraphErrorCode.MERGE_NODE_MISSING_SOURCES, {
-      message: `Merge node "${nodeName}" references non-existent source node(s): ${missingSources.join(', ')}`,
+  static invalidMergeBranch(nodeName: string, missingBranch: string[]): GraphConfigurationError {
+    return new GraphConfigurationError(GraphErrorCode.MERGE_NODE_MISSING_BRANCH, {
+      message: `Merge node "${nodeName}" references non-existent source node(s): ${missingBranch.join(', ')}`,
       nodeName,
-      context: { missingSources },
+      context: { missingBranch },
     });
   }
 }

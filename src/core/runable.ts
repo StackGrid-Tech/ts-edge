@@ -58,7 +58,7 @@ export const createGraphRunnable = ({
       // Map from source nodes to their target merge nodes
       const sourceToMergeNodeMap = Array.from(registry.entries()).reduce(
         (prev, [name, context]) => {
-          context.sources?.forEach((branchNodeName) => {
+          context.branch?.forEach((branchNodeName) => {
             prev[branchNodeName] = name;
           });
           return prev;
@@ -75,7 +75,7 @@ export const createGraphRunnable = ({
 
       /**
        * Updates merge node status when a source node completes
-       * and returns the combined inputs if all sources are ready
+       * and returns the combined inputs if all branch are ready
        */
       const processMergeNode = (nodeName: string, sourceNodeName: string, output: any) => {
         const status = mergeNodeStatus.get(nodeName)!;
@@ -101,7 +101,7 @@ export const createGraphRunnable = ({
           if (context.isMergeNode) {
             prev.set(
               name,
-              context.sources.map((branchNodeName) => ({
+              context.branch.map((branchNodeName) => ({
                 source: branchNodeName,
                 output: undefined,
                 pending: true,
@@ -168,7 +168,7 @@ export const createGraphRunnable = ({
               return scheduleNodeExecution(getThreadId(), nextName, output);
             }
 
-            // Merge node - check if all sources are ready
+            // Merge node - check if all branch are ready
             const mergeInput = processMergeNode(nextName, name, output);
             if (mergeInput) {
               return scheduleNodeExecution(getThreadId(), nextName, mergeInput);
