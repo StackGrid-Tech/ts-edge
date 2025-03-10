@@ -179,6 +179,28 @@ app.subscribe((event) => {
 });
 ```
 
+### Middleware Support
+
+Add middleware to intercept, modify, or redirect node execution:
+
+```typescript
+const app = workflow.compile('startNode');
+
+// Add middleware
+app.use((node, next) => {
+  console.log(`About to execute node: ${node.name} with input:`, node.input);
+
+  // Modify input
+  if (node.name === 'validation') {
+    next({ name: node.name, input: { ...node.input, validated: true } });
+  }
+  // Redirect execution flow
+  else if (node.name === 'router' && node.input.special) {
+    next({ name: 'specialHandler', input: node.input });
+  }
+});
+```
+
 ## Error Handling
 
 ts-edge provides a robust error handling system:

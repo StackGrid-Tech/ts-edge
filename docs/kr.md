@@ -177,6 +177,30 @@ app.subscribe((event) => {
 });
 ```
 
+### Middleware 지원
+
+미들웨어를 추가하여 노드 실행을 가로채거나, 수정하거나, 리디렉션할 수 있습니다:
+
+```typescript
+const app = workflow.compile('startNode');
+
+// 미들웨어 추가
+app.use((node, next) => {
+  console.log(`실행할 노드: ${node.name}, 입력값:`, node.input);
+
+  // 입력값 수정
+  if (node.name === 'validation') {
+    next({ name: node.name, input: { ...node.input, validated: true } });
+  }
+  // 실행 흐름 리디렉션
+  else if (node.name === 'router' && node.input.special) {
+    next({ name: 'specialHandler', input: node.input });
+  }
+
+  // 일반 실행 계속
+});
+```
+
 ## 오류 처리
 
 ```typescript
