@@ -59,24 +59,14 @@ export const createNodeExecutor =
 
           // Handle dynamic edges
           const router = node.edge.next;
-          const next = await router(output);
+          const result = await router(output);
 
-          // If router returns null or undefined, no next nodes
-          if (isNull(next)) {
-            return { name: [], output };
-          }
-
-          // Handle string result (just node name)
-          if (typeof next == 'string') {
-            return { name: [next], output };
-          }
-
-          // Handle object result (node name and input)
-          if (typeof next.name != 'string') {
-            throw GraphExecutionError.invalidDynamicEdgeResult(name, next);
-          }
-
-          return { name: [next.name], output: next.input };
+          const next = [result].flat().filter((v) => {
+            if (isNull(v)) return false;
+            if (typeof v != 'string') throw GraphExecutionError.invalidDynamicEdgeResult(name, next);
+            return true;
+          });
+          return { name: next, output };
         })
         // Handle default branch if no next nodes but we have a merge target
         .map((next) => {

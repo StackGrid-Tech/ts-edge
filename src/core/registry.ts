@@ -29,33 +29,33 @@ export const createGraph = (): GraphRegistry => {
   };
 
   const registry: GraphRegistry = {
-    addNode(node) {
+    addNode({ name, execute }) {
       // Validate that node name doesn't already exist
-      if (context.has(node.name)) {
-        throw GraphConfigurationError.duplicateNode(node.name);
+      if (context.has(name)) {
+        throw GraphConfigurationError.duplicateNode(name);
       }
 
-      context.set(node.name, {
-        execute: node.execute,
+      context.set(name, {
+        execute,
         isMergeNode: false,
       });
 
-      return registry;
+      return registry as any;
     },
 
-    addMergeNode(node) {
+    addMergeNode({ branch, execute, name }) {
       // Validate that node name doesn't already exist
-      if (context.has(node.name)) {
-        throw GraphConfigurationError.duplicateNode(node.name);
+      if (context.has(name)) {
+        throw GraphConfigurationError.duplicateNode(name);
       }
 
-      context.set(node.name, {
-        execute: node.execute,
+      context.set(name, {
+        execute,
         isMergeNode: true,
-        branch: node.branch,
+        branch,
       });
 
-      return registry;
+      return registry as any;
     },
 
     edge(from, to) {

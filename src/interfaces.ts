@@ -215,12 +215,12 @@ export type GraphStructure = Array<{
     | {
         /** Direct edge with explicit target node(s) */
         type: 'direct';
-        name: string | string[];
+        name: string[];
       }
     | {
         /** Dynamic edge with runtime-determined target */
         type: 'dynamic';
-        name?: string;
+        name?: string[];
       };
 }>;
 
@@ -272,29 +272,16 @@ export type GraphResult<T extends GraphNode = never, Output = unknown> = {
 export type GraphNodeRouter<
   AllNode extends GraphNode,
   FromNodeName extends AllNode['name'],
-  ToNodeName extends AllNode['name'],
-> = (output: Extract<AllNode, { name: FromNodeName }>['output']) =>
-  | {
-      /** Name of the target node */
-      name: ToNodeName;
-      /** Input to provide to the target node */
-      input: InputOf<AllNode, ToNodeName>;
-    }
-  | ToNodeName
+  ConnectableNodeName extends AllNode['name'],
+> = (
+  output: Extract<AllNode, { name: FromNodeName }>['output']
+) =>
+  | ConnectableNodeName
+  | ConnectableNodeName[]
   | undefined
   | null
   | void
-  | PromiseLike<
-      | {
-          /** Name of the target node */
-          name: ToNodeName;
-          /** Input to provide to the target node */
-          input: InputOf<AllNode, ToNodeName>;
-        }
-      | ToNodeName
-      | undefined
-      | void
-    >;
+  | PromiseLike<ConnectableNodeName | ConnectableNodeName[] | undefined | null | void>;
 
 /**
  * Interface for a runnable graph workflow.
@@ -390,9 +377,9 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
    * @param router - Function that determines the next node based on output
    * @returns Updated graph registry
    */
-  dynamicEdge<FromName extends T['name'], ToName extends T['name']>(
+  dynamicEdge<FromName extends Exclude<T['name'], Connected>>(
     from: FromName,
-    router: GraphNodeRouter<T, FromName, ToName>
+    router: GraphNodeRouter<T, FromName, ConnectableNode<T, Extract<T, { name: FromName }>>>
   ): GraphRegistry<T, Connected | FromName>;
 
   /**

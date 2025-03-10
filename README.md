@@ -22,26 +22,26 @@ import { createGraph } from 'ts-edge';
 const workflow = createGraph()
   .addNode({
     name: 'input',
-    execute: (query: string) => ({ query })
+    execute: (query: string) => ({ query }),
   })
   .addNode({
     name: 'reasoning',
     execute: (data) => {
       const isComplex = data.query.length > 20;
       return { ...data, isComplex };
-    }
+    },
   })
   .addNode({
     name: 'acting',
     execute: (data) => {
       return { ...data, result: `Performed action for: ${data.query}` };
-    }
+    },
   })
   .addNode({
     name: 'output',
     execute: (data) => {
       return { answer: data.result || `Simple answer for: ${data.query}` };
-    }
+    },
   })
   .edge('input', 'reasoning')
   .dynamicEdge('reasoning', (data) => {
@@ -55,16 +55,14 @@ const result = await app.run('What is the weather today?');
 console.log(result.output); // { answer: "Simple answer for: What is the weather today?" }
 ```
 
-
-
 ## Overview
 
 ts-edge lets you define computational workflows as directed graphs, where:
+
 - **Nodes** process data and produce output
 - **Edges** define the flow between nodes
 - **Dynamic routing** makes decisions based on node outputs
 - **Parallel execution** and **merge nodes** enable complex patterns
-
 
 ## Installation
 
@@ -82,15 +80,14 @@ Nodes process input and produce output. Edges define the flow between nodes.
 const workflow = createGraph()
   .addNode({
     name: 'nodeA',
-    execute: (input) => ({ value: input * 2 })
+    execute: (input) => ({ value: input * 2 }),
   })
   .addNode({
     name: 'nodeB',
-    execute: (input) => ({ result: input.value + 10 })
+    execute: (input) => ({ result: input.value + 10 }),
   })
   .edge('nodeA', 'nodeB');
 ```
-
 
 ### Dynamic Routing
 
@@ -104,17 +101,6 @@ workflow.dynamicEdge('processData', (data) => {
 });
 ```
 
-You can also pass modified input to the next node:
-
-```typescript
-workflow.dynamicEdge('analyze', (data) => {
-  return {
-    name: 'process',
-    input: { ...data, priority: data.score > 0.8 ? 'high' : 'normal' }
-  };
-});
-```
-
 ### Parallel Processing with Merge Nodes
 
 ![parallel](./docs/parallel.png)
@@ -125,15 +111,15 @@ Process data in parallel branches and merge the results:
 const workflow = createGraph()
   .addNode({
     name: 'fetchData',
-    execute: (query) => ({ query })
+    execute: (query) => ({ query }),
   })
   .addNode({
     name: 'processBranch1',
-    execute: (data) => ({ summary: summarize(data.query) })
+    execute: (data) => ({ summary: summarize(data.query) }),
   })
   .addNode({
     name: 'processBranch2',
-    execute: (data) => ({ details: getDetails(data.query) })
+    execute: (data) => ({ details: getDetails(data.query) }),
   })
   .addMergeNode({
     name: 'combineResults',
@@ -141,9 +127,9 @@ const workflow = createGraph()
     execute: (inputs) => ({
       result: {
         summary: inputs.processBranch1.summary,
-        details: inputs.processBranch2.details
-      }
-    })
+        details: inputs.processBranch2.details,
+      },
+    }),
   })
   .edge('fetchData', ['processBranch1', 'processBranch2']);
 ```
@@ -154,14 +140,15 @@ Control the behavior of your workflows:
 
 ```typescript
 const result = await app.run(input, {
-  timeout: 5000,            // Maximum execution time in ms
-  maxNodeVisits: 50,        // Prevent infinite loops
+  timeout: 5000, // Maximum execution time in ms
+  maxNodeVisits: 50, // Prevent infinite loops
 });
 ```
 
 ### Start and End Nodes
 
 When compiling a workflow, you specify:
+
 - A required **start node** where execution begins
 - An optional **end node** that explicitly marks the termination point
 
@@ -174,6 +161,7 @@ const app = workflow.compile('inputNode');
 ```
 
 End node behavior:
+
 - **When an end node is specified**: The workflow terminates when it reaches the end node and returns that node's output.
 - **When no end node is specified**: The workflow runs until it reaches a leaf node (a node with no outgoing edges) and returns the output of the last executed node.
 
@@ -196,13 +184,14 @@ app.subscribe((event) => {
 ts-edge provides a robust error handling system:
 
 ```typescript
-  const result = await app.run(input);
-  if (result.isOk) {
-    console.log(result.output)
-  }else {
-      console.error(result.error);
-  }
+const result = await app.run(input);
+if (result.isOk) {
+  console.log(result.output);
+} else {
+  console.error(result.error);
+}
 ```
+
 ## Helper Functions
 
 These helpers let you define nodes separately for better organization and reusability across files.
@@ -215,7 +204,7 @@ import { graphNode } from 'ts-edge';
 // Create a node
 const userNode = graphNode({
   name: 'getUser',
-  execute: (id: string) => fetchUser(id)
+  execute: (id: string) => fetchUser(id),
 });
 
 // Use in graph
@@ -231,7 +220,7 @@ import { graphMergeNode } from 'ts-edge';
 const mergeNode = graphMergeNode({
   name: 'combine',
   branches: ['userData', 'userStats'],
-  execute: (inputs) => ({ ...inputs.userData, stats: inputs.userStats })
+  execute: (inputs) => ({ ...inputs.userData, stats: inputs.userStats }),
 });
 
 // Use in graph
@@ -244,9 +233,7 @@ graph.addMergeNode(mergeNode);
 import { graphNodeRouter } from 'ts-edge';
 
 // Create a router
-const router = graphNodeRouter((data) => 
-  data.isValid ? 'success' : 'error'
-);
+const router = graphNodeRouter((data) => (data.isValid ? 'success' : 'error'));
 
 // Use in graph
 graph.dynamicEdge('validate', router);

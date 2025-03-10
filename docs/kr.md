@@ -20,26 +20,26 @@ import { createGraph } from 'ts-edge';
 const workflow = createGraph()
   .addNode({
     name: 'input',
-    execute: (query: string) => ({ query })
+    execute: (query: string) => ({ query }),
   })
   .addNode({
     name: 'reasoning',
     execute: (data) => {
       const isComplex = data.query.length > 20;
       return { ...data, isComplex };
-    }
+    },
   })
   .addNode({
     name: 'acting',
     execute: (data) => {
       return { ...data, result: `다음에 대한 작업 수행: ${data.query}` };
-    }
+    },
   })
   .addNode({
     name: 'output',
     execute: (data) => {
       return { answer: data.result || `간단한 답변: ${data.query}` };
-    }
+    },
   })
   .edge('input', 'reasoning')
   .dynamicEdge('reasoning', (data) => {
@@ -56,11 +56,11 @@ console.log(result.output); // { answer: "간단한 답변: 오늘 날씨는 어
 ## 개요
 
 ts-edge는 다음과 같은 방식으로 방향성 그래프로 계산 workflow를 정의할 수 있게 해줍니다:
+
 - **Node**: 데이터를 처리하고 출력을 생성
 - **Edge**: node 간의 흐름을 정의
 - **Dynamic routing**: node 출력을 기반으로 결정
 - **Parallel execution**과 **merge node**: 복잡한 패턴 구현
-
 
 ## 설치
 
@@ -78,11 +78,11 @@ Node는 입력을 처리하고 출력을 생성합니다. Edge는 node 간의 �
 const workflow = createGraph()
   .addNode({
     name: 'nodeA',
-    execute: (input) => ({ value: input * 2 })
+    execute: (input) => ({ value: input * 2 }),
   })
   .addNode({
     name: 'nodeB',
-    execute: (input) => ({ result: input.value + 10 })
+    execute: (input) => ({ result: input.value + 10 }),
   })
   .edge('nodeA', 'nodeB');
 ```
@@ -99,17 +99,6 @@ workflow.dynamicEdge('processData', (data) => {
 });
 ```
 
-다음 node에 수정된 입력을 전달할 수도 있습니다:
-
-```typescript
-workflow.dynamicEdge('analyze', (data) => {
-  return {
-    name: 'process',
-    input: { ...data, priority: data.score > 0.8 ? 'high' : 'normal' }
-  };
-});
-```
-
 ### 병렬 처리와 Merge Node
 
 ![parallel](./parallel.png)
@@ -120,15 +109,15 @@ workflow.dynamicEdge('analyze', (data) => {
 const workflow = createGraph()
   .addNode({
     name: 'fetchData',
-    execute: (query) => ({ query })
+    execute: (query) => ({ query }),
   })
   .addNode({
     name: 'processBranch1',
-    execute: (data) => ({ summary: summarize(data.query) })
+    execute: (data) => ({ summary: summarize(data.query) }),
   })
   .addNode({
     name: 'processBranch2',
-    execute: (data) => ({ details: getDetails(data.query) })
+    execute: (data) => ({ details: getDetails(data.query) }),
   })
   .addMergeNode({
     name: 'combineResults',
@@ -136,9 +125,9 @@ const workflow = createGraph()
     execute: (inputs) => ({
       result: {
         summary: inputs.processBranch1.summary,
-        details: inputs.processBranch2.details
-      }
-    })
+        details: inputs.processBranch2.details,
+      },
+    }),
   })
   .edge('fetchData', ['processBranch1', 'processBranch2']);
 ```
@@ -149,13 +138,15 @@ Workflow의 동작을 제어할 수 있습니다:
 
 ```typescript
 const result = await app.run(input, {
-  timeout: 5000,            // 최대 실행 시간(ms)
-  maxNodeVisits: 50,        // 무한 루프 방지
+  timeout: 5000, // 최대 실행 시간(ms)
+  maxNodeVisits: 50, // 무한 루프 방지
 });
 ```
+
 ### Start Node와 End Node
 
 Workflow를 컴파일할 때 다음을 지정합니다:
+
 - 필수 **start node**: 실행이 시작되는 곳
 - 선택적 **end node**: 명시적으로 지정한 종료 지점
 
@@ -168,11 +159,11 @@ const app = workflow.compile('inputNode');
 ```
 
 End node 동작 방식:
+
 - **End node를 지정한 경우**: workflow가 end node에 도달하면 즉시 종료되고, 해당 node의 출력이 반환됩니다.
 - **End node를 지정하지 않은 경우**: 더 이상 나가는 edge가 없는 node(리프 node)에 도달할 때까지 실행되며, 마지막으로 실행된 node의 출력이 반환됩니다.
 
 End node를 지정하면 특정 지점에서 workflow를 강제로 종료할 수 있어 복잡한 workflow에서 유용합니다.
-
 
 ### Event 구독
 
@@ -189,13 +180,14 @@ app.subscribe((event) => {
 ## 오류 처리
 
 ```typescript
-  const result = await app.run(input);
-  if (result.isOk) {
-    console.log(result.output)
-  } else {
-      console.error(result.error);
-  }
+const result = await app.run(input);
+if (result.isOk) {
+  console.log(result.output);
+} else {
+  console.error(result.error);
+}
 ```
+
 ## Helper 함수
 
 이 helper 함수들은 node를 별도로 정의하여 코드 구성을 개선하고, 여러 파일에서 재사용할 수 있게 해줍니다.
@@ -208,7 +200,7 @@ import { graphNode } from 'ts-edge';
 // Node 생성
 const userNode = graphNode({
   name: 'getUser',
-  execute: (id: string) => fetchUser(id)
+  execute: (id: string) => fetchUser(id),
 });
 
 // 그래프에서 사용
@@ -224,7 +216,7 @@ import { graphMergeNode } from 'ts-edge';
 const mergeNode = graphMergeNode({
   name: 'combine',
   branches: ['userData', 'userStats'] as const,
-  execute: (inputs) => ({ ...inputs.userData, stats: inputs.userStats })
+  execute: (inputs) => ({ ...inputs.userData, stats: inputs.userStats }),
 });
 
 // 그래프에서 사용
@@ -237,9 +229,7 @@ graph.addMergeNode(mergeNode);
 import { graphNodeRouter } from 'ts-edge';
 
 // Router 생성
-const router = graphNodeRouter((data) => 
-  data.isValid ? 'success' : 'error'
-);
+const router = graphNodeRouter((data) => (data.isValid ? 'success' : 'error'));
 
 // 그래프에서 사용
 graph.dynamicEdge('validate', router);

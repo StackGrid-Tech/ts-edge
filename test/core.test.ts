@@ -206,30 +206,6 @@ describe('Workflow Module', () => {
       expect(result2.output).toBe('5 is odd');
     });
 
-    it('동적 라우팅에서 객체 형식으로 반환할 수 있어야 함', async () => {
-      const workflow = createGraph()
-        .addNode({
-          name: 'start',
-          execute: (input: number) => input,
-        })
-        .addNode({
-          name: 'process',
-          execute: (input: { value: number; multiplier: number }) => input.value * input.multiplier,
-        })
-        .dynamicEdge('start', (output) => {
-          return {
-            name: 'process',
-            input: { value: output, multiplier: 3 },
-          };
-        });
-
-      const app = workflow.compile('start');
-
-      const result = await app.run(5);
-
-      expect(result.output).toBe(15); // 5 * 3 = 15
-    });
-
     it('동적 라우팅에서 undefined 반환 시 워크플로우가 종료되어야 함', async () => {
       const workflow = createGraph()
         .addNode({
@@ -621,3 +597,71 @@ describe('Workflow Module', () => {
     });
   });
 });
+// it('타입검증',()=>{
+
+//   const booleanToString = graphNode({
+//     name:'boolean to string',
+//     execute:(input:boolean)=>String(input?'true':'false')
+//   })
+//   const booleanToNumber = graphNode({
+//     name:'boolean to number',
+//     execute:(input:boolean)=>Number(input?1:0)
+//   })
+
+//   const router = graphNodeRouter((input:any)=>{
+
+//     return 'OK'
+//   })
+
+//   const mergeNode = graphMergeNode({
+//     name:'merge2',
+//     branch:['string to number','number to string'],
+//     execute(inputs) {
+//         return ''
+//     },
+//   })
+
+//   const workflow = createGraph()
+//     .addNode({
+//       name:'number to string',
+//       execute(input:number) {
+//             return String(input)
+//       },
+//     })
+//     .addNode({
+//       name:'string to number',
+//       execute(input:string) {
+//             return Number(input)
+//       },
+//     })
+//     .addNode(booleanToString)
+//     .addNode(booleanToNumber)
+//     .addNode({
+//       name:'any to boolean',
+//       execute(input:any) {
+//             return Boolean(input)
+//       },
+//     })
+//     .addMergeNode(mergeNode)
+//     .edge('string to number','number to string')
+//     .edge('number to string','string to number')
+//     .edge('boolean to number','number to string')
+//     .addMergeNode({
+//       name:'mergeNode',
+//       branch:['boolean to number','boolean to string'],
+//       execute(inputs) {
+//         return inputs
+//       },
+//     })
+//     .edge('boolean to string','mergeNode')
+//     .dynamicEdge('mergeNode',router)
+//     .dynamicEdge('any to boolean',bool=>{
+//       return bool?'mergeNode':'boolean to number'
+//     })
+
+//   const app = workflow.compile('number to string')
+//   app.run(123).then(result=>{
+//     result.output
+//   })
+
+// })
