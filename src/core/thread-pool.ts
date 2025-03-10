@@ -19,7 +19,7 @@ interface Thread {
 /**
  * Creates a thread pool for managing concurrent execution of tasks
  */
-export const createThreadPool = () => {
+export const createVirtualThreadPool = () => {
   // Map of thread ID to thread information
   const threads = new Map<string, Thread>();
 

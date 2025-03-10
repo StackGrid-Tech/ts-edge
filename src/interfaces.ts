@@ -43,6 +43,13 @@ export type GraphNodeWithOptionalOutput<T extends GraphNode> = {
   [K in keyof T]: K extends 'output' ? T[K] | undefined : T[K];
 };
 
+export type GraphNodeWithOutOutput<T extends GraphNode> = {
+  [K in T['name']]: {
+    name: K;
+    input: Extract<T, { name: K }>['input'];
+  };
+}[T['name']];
+
 /**
  * Records the execution history of a node.
  * Contains timing information, success/failure status, and error details.
@@ -53,6 +60,7 @@ export type GraphNodeHistory<T extends GraphNode = GraphNode> = {
   /** Timestamp when the node execution started */
   startedAt: number;
 
+  threadId: string;
   /** Timestamp when the node execution ended */
   endedAt: number;
 
@@ -150,7 +158,8 @@ export type GraphNodeStartEvent<T extends GraphNode = GraphNode> = {
   executionId: string;
   /** Event type identifier */
   eventType: 'NODE_START';
-} & Pick<GraphNodeHistory<T>, 'startedAt' | 'node'>;
+  node: GraphNodeWithOutOutput<T>;
+} & Pick<GraphNodeHistory<T>, 'startedAt' | 'threadId'>;
 
 /**
  * Event emitted when a node completes execution.
@@ -160,7 +169,6 @@ export type GraphNodeStartEvent<T extends GraphNode = GraphNode> = {
 export type GraphNodeEndEvent<T extends GraphNode = GraphNode> = {
   /** Unique identifier for this execution instance */
   executionId: string;
-
   /** Event type identifier */
   eventType: 'NODE_END';
 } & GraphNodeHistory<T>;
@@ -321,6 +329,10 @@ export interface GraphRunnable<
    * @returns Promise resolving to the execution result
    */
   run(input: InputOf<T, StartNode>, options?: Partial<RunOptions>): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
+
+  use(
+    middleware: (node: GraphNodeWithOutOutput<T>, next: (route?: GraphNodeWithOutOutput<T>) => void) => any
+  ): GraphRunnable<T, StartNode, EndNode>;
 }
 
 /**

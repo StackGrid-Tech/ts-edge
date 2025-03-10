@@ -20,6 +20,7 @@ export enum GraphErrorCode {
   INVALID_DYNAMIC_EDGE_RESULT = 'Invalid result from dynamic edge router',
   THREAD_POOL_FAILURE = 'Thread pool execution failed',
   EXECUTION_ABORTED = 'Graph execution was aborted',
+  MIDDLEWARE_FAIL = 'Error thrown in graph middleware',
 
   // Data Errors (3000-3999)
   INVALID_INPUT = 'Invalid input data provided',

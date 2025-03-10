@@ -9,10 +9,10 @@ import {
   RunOptions,
   GraphRegistryContext,
 } from '../interfaces';
-import { createPubSub, randomId, withTimeout } from '../shared';
+import { createPubSub, PromiseChain, randomId, withTimeout } from '../shared';
 import { createNodeExecutor } from './node-executor';
-import { createThreadPool } from './thread-pool';
-import { GraphExecutionError } from './error';
+import { createVirtualThreadPool } from './thread-pool';
+import { GraphErrorCode, GraphExecutionError } from './error';
 
 /**
  * Creates a runnable graph from a registry configuration
@@ -28,10 +28,15 @@ export const createGraphRunnable = ({
 }): GraphRunnable<never> => {
   const { publish, subscribe, unsubscribe } = createPubSub();
 
-  return {
+  const middlewares: Array<Function> = [];
+
+  const runnable = {
     subscribe,
     unsubscribe,
-
+    use(middleware) {
+      middlewares.push(middleware);
+      return runnable;
+    },
     /**
      * Returns the structure of the graph for visualization
      */
@@ -120,13 +125,40 @@ export const createGraphRunnable = ({
         >
       );
 
-      const threadPool = createThreadPool();
+      const threadPool = createVirtualThreadPool();
 
       /**
        * Schedules a node for execution in the thread pool
        */
-      const scheduleNodeExecution = (threadId: string, name: string, input: any) => {
+      const scheduleNodeExecution = (threadId: string, nextName: string, nextInput: any) => {
         threadPool.scheduleTask(threadId, async () => {
+          let name = nextName;
+          let input = nextInput;
+
+          const chain = PromiseChain();
+
+          await Promise.all(
+            middlewares.map((middleware) => {
+              return chain(async () => {
+                try {
+                  const next = (v) => {
+                    if (!v) return;
+                    name = v.name;
+                    input = v.input;
+                  };
+                  await middleware({ name, input }, next);
+                } catch (error) {
+                  throw new GraphExecutionError(GraphErrorCode.MIDDLEWARE_FAIL, {
+                    message: `Middleware error for node "${name}": ${error instanceof Error ? error.message : String(error)}`,
+                    nodeName: name,
+                    cause: error instanceof Error ? error : new Error(String(error)),
+                    context: { input },
+                  });
+                }
+              });
+            })
+          );
+
           const nodeContext = registry.get(name);
 
           if (!nodeContext) {
@@ -143,6 +175,7 @@ export const createGraphRunnable = ({
             name,
             end,
             baseBranch: sourceToMergeNodeMap[name],
+            threadId,
             node: nodeContext,
             recordExecution,
             publishEvent: publish,
@@ -212,7 +245,6 @@ export const createGraphRunnable = ({
        */
       const toResult = (isOk: boolean) => (output: unknown) => {
         if (end && histories.at(-1)?.node.name != end) {
-          console.log({ end, lastNode: histories.at(-1)?.node.name });
           const endNode = [...histories].reverse().find((n) => n.node.name == end)?.node;
           if (endNode) output = endNode.output;
         }
@@ -245,4 +277,6 @@ export const createGraphRunnable = ({
         .unwrap();
     },
   };
+
+  return runnable;
 };

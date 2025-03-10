@@ -8,6 +8,7 @@ import { GraphExecutionError } from './error';
  */
 interface NodeExecutionContext {
   executionId: string;
+  threadId: string;
   end?: string;
   name: string;
   node: GraphNodeContext;
@@ -20,7 +21,7 @@ interface NodeExecutionContext {
  * Creates a node executor function that processes input and determines the next nodes
  */
 export const createNodeExecutor =
-  ({ executionId, name, node, end, baseBranch, recordExecution, publishEvent }: NodeExecutionContext) =>
+  ({ executionId, name, node, end, baseBranch, threadId, recordExecution, publishEvent }: NodeExecutionContext) =>
   async (input: any) => {
     const startedAt = Date.now();
     return (
@@ -29,6 +30,7 @@ export const createNodeExecutor =
         .watch(
           publishEvent.bind(null, {
             executionId,
+            threadId,
             eventType: 'NODE_START',
             startedAt,
             node: { name, input },
@@ -80,6 +82,7 @@ export const createNodeExecutor =
           const history = {
             startedAt,
             endedAt: Date.now(),
+            threadId,
             error: result.error,
             node: {
               input,
@@ -93,6 +96,7 @@ export const createNodeExecutor =
 
           publishEvent({
             eventType: 'NODE_END',
+
             executionId,
             ...history,
           } as GraphNodeEndEvent);
