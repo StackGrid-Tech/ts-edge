@@ -13,6 +13,17 @@ export const createGraph = (): GraphRegistry => {
         if (invalidBranch.length > 0) {
           throw GraphConfigurationError.invalidMergeBranch(nodeName, invalidBranch);
         }
+        node.branch.forEach((branch) => {
+          const branchNode = context.get(branch);
+          if (!branchNode) return;
+          if (branchNode.edge?.type != 'dynamic') {
+            const edge = {
+              type: 'direct' as const,
+              next: Array.from(new Set([...(branchNode.edge?.next ?? []), nodeName])),
+            };
+            branchNode.edge = edge;
+          }
+        });
       }
       // Validate target nodes for direct edges
       else if (node.edge?.type === 'direct') {

@@ -64,11 +64,12 @@ export const createGraphRunnable = ({
       const sourceToMergeNodeMap = Array.from(registry.entries()).reduce(
         (prev, [name, context]) => {
           context.branch?.forEach((branchNodeName) => {
-            prev[branchNodeName] = name;
+            prev[branchNodeName] ??= [];
+            prev[branchNodeName].push(name);
           });
           return prev;
         },
-        {} as Record<string, string>
+        {} as Record<string, string[]>
       );
 
       // History of node executions
@@ -174,7 +175,7 @@ export const createGraphRunnable = ({
             executionId,
             name,
             end,
-            baseBranch: sourceToMergeNodeMap[name],
+            baseBranch: sourceToMergeNodeMap[name] ?? [],
             threadId,
             node: nodeContext,
             recordExecution,

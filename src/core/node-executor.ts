@@ -12,7 +12,7 @@ interface NodeExecutionContext {
   end?: string;
   name: string;
   node: GraphNodeContext;
-  baseBranch?: string;
+  baseBranch: string[];
   recordExecution: (history: GraphNodeHistory) => void;
   publishEvent: (event: GraphNodeStartEvent | GraphNodeEndEvent) => void;
 }
@@ -72,8 +72,8 @@ export const createNodeExecutor =
         })
         // Handle default branch if no next nodes but we have a merge target
         .map((next) => {
-          if (!next.name.length && baseBranch && (isNull(end) || name != end)) {
-            return { name: [baseBranch], output: next.output };
+          if (!next.name.length && baseBranch.length && (isNull(end) || name != end)) {
+            return { name: baseBranch, output: next.output };
           }
           return next;
         })
