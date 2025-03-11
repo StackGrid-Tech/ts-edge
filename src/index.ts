@@ -18,4 +18,7 @@ export type {
   GraphRunnable,
   GraphNodeRouter,
   GraphRegistry,
+  GraphNodeWithOutOutput,
+  GraphNodeWithOptionalOutput,
+  ConnectableNode,
 } from './interfaces';
