@@ -1,6 +1,6 @@
 import { safe } from 'ts-safe';
 import { GraphNodeContext, GraphNodeEndEvent, GraphNodeHistory, GraphNodeStartEvent } from '../interfaces';
-import { isNull } from '../shared';
+import { isNull, randomId } from '../shared';
 import { GraphExecutionError } from './error';
 
 /**
@@ -24,11 +24,13 @@ export const createNodeExecutor =
   ({ executionId, name, node, end, baseBranch, threadId, recordExecution, publishEvent }: NodeExecutionContext) =>
   async (input: any) => {
     const startedAt = Date.now();
+    const nodeExecutionId = randomId();
     return (
       safe(node)
         // Publish node start event
         .watch(
           publishEvent.bind(null, {
+            nodeExecutionId,
             executionId,
             threadId,
             eventType: 'NODE_START',
@@ -84,6 +86,7 @@ export const createNodeExecutor =
             endedAt: Date.now(),
             threadId,
             error: result.error,
+            nodeExecutionId,
             node: {
               input,
               name: name,
@@ -96,7 +99,6 @@ export const createNodeExecutor =
 
           publishEvent({
             eventType: 'NODE_END',
-
             executionId,
             ...history,
           } as GraphNodeEndEvent);

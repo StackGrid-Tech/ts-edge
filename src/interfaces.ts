@@ -57,6 +57,7 @@ export type GraphNodeWithOutOutput<T extends GraphNode> = {
  * @template T - The GraphNode type
  */
 export type GraphNodeHistory<T extends GraphNode = GraphNode> = {
+  nodeExecutionId: string;
   /** Timestamp when the node execution started */
   startedAt: number;
 
@@ -95,9 +96,6 @@ export type GraphNodeHistory<T extends GraphNode = GraphNode> = {
  * @template Input - The input type for the workflow
  */
 export type GraphStartEvent<Input = any> = {
-  /** Unique identifier for this execution instance */
-  executionId: string;
-
   /** Event type identifier */
   eventType: 'WORKFLOW_START';
 
@@ -159,7 +157,7 @@ export type GraphNodeStartEvent<T extends GraphNode = GraphNode> = {
   /** Event type identifier */
   eventType: 'NODE_START';
   node: GraphNodeWithOutOutput<T>;
-} & Pick<GraphNodeHistory<T>, 'startedAt' | 'threadId'>;
+} & Pick<GraphNodeHistory<T>, 'startedAt' | 'threadId' | 'nodeExecutionId'>;
 
 /**
  * Event emitted when a node completes execution.
@@ -218,6 +216,7 @@ export interface RunOptions {
 export type GraphStructure = Array<{
   /** Name of the node */
   name: string;
+  description?: string;
   /** Edge information for the node (if any) */
   edge?:
     | {
@@ -352,6 +351,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
     execute: (input: Input) => Output;
+    description?: string;
   }): GraphRegistry<T | GraphNode<Name, Input, Output>, Connected>;
 
   /**
@@ -365,6 +365,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
     branch: Branch;
     name: Name;
     execute: (inputs: { [K in Branch[number]]: OutputOf<T, K> }) => Output;
+    description?: string;
   }): GraphRegistry<T | GraphNode<Name, any, Output>, Connected>;
 
   /**
@@ -409,6 +410,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
 
 export type GraphNodeContext = {
   execute: Function;
+  description?: string;
   edge?:
     | {
         type: 'direct';

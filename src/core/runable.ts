@@ -43,6 +43,7 @@ export const createGraphRunnable = ({
     getStructure() {
       return Array.from(registry.entries()).map(([name, item]) => ({
         name,
+        description: item.description,
         edge: item.edge
           ? {
               name: item.edge.type === 'direct' ? item.edge.next : undefined,
