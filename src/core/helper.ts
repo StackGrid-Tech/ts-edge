@@ -2,6 +2,7 @@ import { GraphNode, GraphNodeRouter } from '../interfaces';
 
 export const graphNode = <Name extends string = string, Input = any, Output = any>(node: {
   name: Name;
+  description?: string;
   execute: (input: Input) => Output;
 }) => {
   return node;
