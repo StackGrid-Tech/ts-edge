@@ -105,7 +105,8 @@ export const createGraph = (): GraphRegistry => {
 
       node.edge = {
         type: 'dynamic',
-        next: router,
+        next: typeof router == 'function' ? [] : router.possibleTargets,
+        router: typeof router == 'function' ? router : router.router,
       };
 
       return registry;

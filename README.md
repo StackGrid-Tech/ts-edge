@@ -95,10 +95,21 @@ Make execution decisions based on node outputs:
 
 ```typescript
 workflow.dynamicEdge('processData', (data) => {
-  if (data.value > 100) return 'highValueProcess';
+  if (data.value > 100) return ['highValueProcess''standardProcess'];
   if (data.value < 0) return 'errorHandler';
   return 'standardProcess';
 });
+```
+
+```typescript
+workflow.dynamicEdge('processData', {
+
+  possibleNode:['highValueProcess','errorHandler','standardProcess']
+  router:(data) => {
+  if (data.value > 100) return ['highValueProcess''standardProcess'];
+  if (data.value < 0) return 'errorHandler';
+  return 'standardProcess';
+}});
 ```
 
 ### Parallel Processing with Merge Nodes

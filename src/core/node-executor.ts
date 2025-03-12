@@ -62,7 +62,7 @@ export const createNodeExecutor =
           }
 
           // Handle dynamic edges
-          const router = node.edge.next;
+          const router = node.edge.router!;
           const result = await router(output);
 
           const next = [result].flat().filter((v) => {

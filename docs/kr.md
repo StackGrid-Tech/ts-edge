@@ -87,9 +87,9 @@ const workflow = createGraph()
   .edge('nodeA', 'nodeB');
 ```
 
-### Dynamic Routing
+### Dynamic Routing (동적 라우팅)
 
-Node 출력을 기반으로 실행 결정을 할 수 있습니다:
+노드 출력을 기반으로 실행 결정을 할 수 있습니다:
 
 ```typescript
 workflow.dynamicEdge('processData', (data) => {
@@ -98,6 +98,21 @@ workflow.dynamicEdge('processData', (data) => {
   return 'standardProcess';
 });
 ```
+
+가시화 개선을 위해 가능한 대상 노드를 미리 정의할 수 있습니다:
+
+```typescript
+workflow.dynamicEdge('processData', {
+  possibleTargets: ['highValueProcess', 'errorHandler', 'standardProcess'],
+  router: (data) => {
+    if (data.value > 100) return 'highValueProcess';
+    if (data.value < 0) return 'errorHandler';
+    return 'standardProcess';
+  },
+});
+```
+
+`possibleTargets`를 사용하는 두 번째 방식은 워크플로우 시각화에서 모든 잠재적 경로를 표시할 수 있게 해주어, 그래프를 더 정보적이고 완전하게 만들어 줍니다.
 
 ### 병렬 처리와 Merge Node
 

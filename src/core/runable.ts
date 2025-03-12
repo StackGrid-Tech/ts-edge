@@ -44,9 +44,10 @@ export const createGraphRunnable = ({
       return Array.from(registry.entries()).map(([name, item]) => ({
         name,
         description: item.description,
+        isMergeNode: item.isMergeNode,
         edge: item.edge
           ? {
-              name: item.edge.type === 'direct' ? item.edge.next : undefined,
+              name: item.edge.next,
               type: item.edge.type,
             }
           : undefined,

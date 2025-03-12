@@ -216,19 +216,14 @@ export interface RunOptions {
 export type GraphStructure = Array<{
   /** Name of the node */
   name: string;
-  description?: string;
   /** Edge information for the node (if any) */
-  edge?:
-    | {
-        /** Direct edge with explicit target node(s) */
-        type: 'direct';
-        name: string[];
-      }
-    | {
-        /** Dynamic edge with runtime-determined target */
-        type: 'dynamic';
-        name?: string[];
-      };
+  edge?: {
+    /** Direct edge with explicit target node(s) */
+    type: 'direct' | 'dynamic';
+    name: string[];
+  };
+  isMergeNode: boolean;
+  description?: string;
 }>;
 
 /**
@@ -384,17 +379,25 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
   ): GraphRegistry<T, Connected | FromName>;
 
   /**
-   * Creates a dynamic edge that uses a router function to determine the next node.
+   * Creates a dynamic edge that determines the next node at runtime.
    *
    * @param from - Source node name
-   * @param router - Function that determines the next node based on output
+   * @param routerOrConfig - Either a direct router function or a configuration object
+   *                         with possible target nodes and a router function
    * @returns Updated graph registry
    */
-  dynamicEdge<FromName extends Exclude<T['name'], Connected>>(
+  dynamicEdge<
+    FromName extends Exclude<T['name'], Connected>,
+    PossibleNode extends ConnectableNode<T, Extract<T, { name: FromName }>>[],
+  >(
     from: FromName,
-    router: GraphNodeRouter<T, FromName, ConnectableNode<T, Extract<T, { name: FromName }>>>
+    routerOrConfig:
+      | GraphNodeRouter<T, FromName, ConnectableNode<T, Extract<T, { name: FromName }>>>
+      | {
+          possibleTargets: [...PossibleNode];
+          router: GraphNodeRouter<T, FromName, PossibleNode[number]>;
+        }
   ): GraphRegistry<T, Connected | FromName>;
-
   /**
    * Compiles the graph into a runnable workflow.
    *
@@ -411,15 +414,11 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
 export type GraphNodeContext = {
   execute: Function;
   description?: string;
-  edge?:
-    | {
-        type: 'direct';
-        next: string[];
-      }
-    | {
-        type: 'dynamic';
-        next: Function;
-      };
+  edge?: {
+    type: 'direct' | 'dynamic';
+    next: string[];
+    router?: Function;
+  };
 } & ({ isMergeNode: true; branch: string[] } | { isMergeNode: false; branch?: string[] });
 
 export type GraphRegistryContext = Map<string, GraphNodeContext>;
