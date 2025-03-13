@@ -1,9 +1,9 @@
-import { GraphNode, GraphNodeRouter } from '../interfaces';
+import { GraphNode, GraphNodeMatadata, GraphNodeRouter } from '../interfaces';
 
 export const graphNode = <Name extends string = string, Input = any, Output = any>(node: {
   name: Name;
-  description?: string;
   execute: (input: Input) => Output;
+  metadata?: GraphNodeMatadata;
 }) => {
   return node;
 };
@@ -11,8 +11,8 @@ export const graphNode = <Name extends string = string, Input = any, Output = an
 export namespace graphNode {
   export type infer<T extends ReturnType<typeof graphNode>> = T extends {
     name: infer N;
-    description?: string;
     execute: (input: infer I) => infer O;
+    metadata?: GraphNodeMatadata;
   }
     ? { name: N; input: I; output: O extends PromiseLike<any> ? Awaited<O> : O }
     : never;
@@ -31,7 +31,7 @@ export function graphNodeRouter(...args: any[]) {
 export const graphMergeNode = <Name extends string, Branch extends readonly string[], Output = any>(mergedNode: {
   branch: [...Branch];
   name: Name;
-  description?: string;
+  metadata?: GraphNodeMatadata;
   execute: (inputs: { [K in Branch[number]]: any }) => Output;
 }) => {
   return mergedNode;

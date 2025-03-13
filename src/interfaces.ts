@@ -17,6 +17,8 @@ export type GraphNode<Name extends string = string, Input = any, Output = any> =
   output: Output extends PromiseLike<any> ? Awaited<Output> : Output;
 };
 
+export type GraphNodeMatadata = { [key: string]: any };
+
 /**
  * Extracts the input type of a node with a specific name.
  *
@@ -213,7 +215,7 @@ export interface RunOptions {
  * Represents the structure of a graph.
  * Used for visualization and analysis purposes.
  */
-export type GraphStructure = Array<{
+export type GraphNodeStructure = {
   /** Name of the node */
   name: string;
   /** Edge information for the node (if any) */
@@ -222,9 +224,9 @@ export type GraphStructure = Array<{
     type: 'direct' | 'dynamic';
     name: string[];
   };
+  metadata: GraphNodeMatadata;
   isMergeNode: boolean;
-  description?: string;
-}>;
+};
 
 /**
  * Represents the result of executing a graph workflow.
@@ -302,7 +304,7 @@ export interface GraphRunnable<
    * Gets the structure of the graph.
    * @returns The graph structure for visualization and analysis
    */
-  getStructure(): GraphStructure;
+  getStructure(): GraphNodeStructure[];
 
   /**
    * Subscribes to graph execution events.
@@ -346,7 +348,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
     execute: (input: Input) => Output;
-    description?: string;
+    metadata?: GraphNodeMatadata;
   }): GraphRegistry<T | GraphNode<Name, Input, Output>, Connected>;
 
   /**
@@ -360,7 +362,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
     branch: Branch;
     name: Name;
     execute: (inputs: { [K in Branch[number]]: OutputOf<T, K> }) => Output;
-    description?: string;
+    metadata?: GraphNodeMatadata;
   }): GraphRegistry<T | GraphNode<Name, any, Output>, Connected>;
 
   /**
@@ -413,7 +415,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
 
 export type GraphNodeContext = {
   execute: Function;
-  description?: string;
+  metadata: GraphNodeMatadata;
   edge?: {
     type: 'direct' | 'dynamic';
     next: string[];

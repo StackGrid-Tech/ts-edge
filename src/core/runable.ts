@@ -5,9 +5,9 @@ import {
   GraphResult,
   GraphRunnable,
   GraphStartEvent,
-  GraphStructure,
   RunOptions,
   GraphRegistryContext,
+  GraphNodeStructure,
 } from '../interfaces';
 import { createPubSub, PromiseChain, randomId, withTimeout } from '../shared';
 import { createNodeExecutor } from './node-executor';
@@ -41,17 +41,20 @@ export const createGraphRunnable = ({
      * Returns the structure of the graph for visualization
      */
     getStructure() {
-      return Array.from(registry.entries()).map(([name, item]) => ({
-        name,
-        description: item.description,
-        isMergeNode: item.isMergeNode,
-        edge: item.edge
-          ? {
-              name: item.edge.next,
-              type: item.edge.type,
-            }
-          : undefined,
-      })) as GraphStructure;
+      return Array.from(registry.entries()).map(([name, item]) => {
+        const structure: GraphNodeStructure = {
+          name,
+          metadata: item.metadata,
+          isMergeNode: item.isMergeNode,
+          edge: item.edge
+            ? {
+                name: item.edge.next,
+                type: item.edge.type,
+              }
+            : undefined,
+        };
+        return structure;
+      });
     },
 
     /**

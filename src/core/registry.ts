@@ -40,7 +40,7 @@ export const createGraph = (): GraphRegistry => {
   };
 
   const registry: GraphRegistry = {
-    addNode({ name, execute, description }) {
+    addNode({ name, execute, metadata }) {
       // Validate that node name doesn't already exist
       if (context.has(name)) {
         throw GraphConfigurationError.duplicateNode(name);
@@ -49,13 +49,13 @@ export const createGraph = (): GraphRegistry => {
       context.set(name, {
         execute,
         isMergeNode: false,
-        description,
+        metadata: metadata ?? {},
       });
 
       return registry as any;
     },
 
-    addMergeNode({ branch, execute, name, description }) {
+    addMergeNode({ branch, execute, name, metadata }) {
       // Validate that node name doesn't already exist
       if (context.has(name)) {
         throw GraphConfigurationError.duplicateNode(name);
@@ -65,7 +65,7 @@ export const createGraph = (): GraphRegistry => {
         execute,
         isMergeNode: true,
         branch,
-        description,
+        metadata: metadata ?? {},
       });
 
       return registry as any;
