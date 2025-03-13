@@ -204,7 +204,7 @@ export type ConnectableNode<T extends GraphNode, InputNode extends GraphNode> = 
 /**
  * Options for running a graph workflow.
  */
-export interface RunOptions {
+export interface GraphRunOptions {
   /** Maximum number of times a node can be visited during execution */
   maxNodeVisits: number;
   /** Maximum execution time in milliseconds before timeout */
@@ -324,7 +324,7 @@ export interface GraphRunnable<
    * @param options - Optional configuration for execution
    * @returns Promise resolving to the execution result
    */
-  run(input: InputOf<T, StartNode>, options?: Partial<RunOptions>): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
+  run(input: InputOf<T, StartNode>, options?: Partial<GraphRunOptions>): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
 
   use(
     middleware: (node: GraphNodeWithOutOutput<T>, next: (route?: GraphNodeWithOutOutput<T>) => void) => any

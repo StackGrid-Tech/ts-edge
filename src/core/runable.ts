@@ -5,7 +5,7 @@ import {
   GraphResult,
   GraphRunnable,
   GraphStartEvent,
-  RunOptions,
+  GraphRunOptions,
   GraphRegistryContext,
   GraphNodeStructure,
 } from '../interfaces';
@@ -61,7 +61,7 @@ export const createGraphRunnable = ({
      * Executes the graph with the provided input
      */
     async run(input, options) {
-      const opt: RunOptions = { timeout: 600000, maxNodeVisits: 100, ...(options as any) };
+      const opt: GraphRunOptions = { timeout: 600000, maxNodeVisits: 100, ...(options as any) };
       const executionId = randomId();
       const startedAt = Date.now();
 

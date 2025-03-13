@@ -16,6 +16,7 @@ export type {
   GraphResult,
   GraphRunnable,
   GraphNodeRouter,
+  GraphRunOptions,
   GraphRegistry,
   GraphNodeWithOutOutput,
   GraphNodeWithOptionalOutput,
