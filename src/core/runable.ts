@@ -12,7 +12,7 @@ import {
 import { createPubSub, PromiseChain, randomId, withTimeout } from '../shared';
 import { createNodeExecutor } from './node-executor';
 import { createVirtualThreadPool } from './thread-pool';
-import { GraphErrorCode, GraphExecutionError } from './error';
+import { GraphError, GraphErrorCode, GraphExecutionError } from './error';
 
 /**
  * Creates a runnable graph from a registry configuration
@@ -30,9 +30,19 @@ export const createGraphRunnable = ({
 
   const middlewares: Array<Function> = [];
 
+  let runningIds: string[] = [];
+
+  let exitReason: string | undefined;
+
   const runnable = {
     subscribe,
     unsubscribe,
+    exit(reason) {
+      if (!runningIds.length) return;
+      exitReason = safe(() => String(reason) || '')
+        .catch((e) => e?.name || 'stop-error')
+        .unwrap();
+    },
     use(middleware) {
       middlewares.push(middleware);
       return runnable;
@@ -62,7 +72,9 @@ export const createGraphRunnable = ({
      */
     async run(input, options) {
       const opt: GraphRunOptions = { timeout: 600000, maxNodeVisits: 100, ...(options as any) };
+      exitReason = undefined;
       const executionId = randomId();
+      runningIds.push(executionId);
       const startedAt = Date.now();
 
       // Map from source nodes to their target merge nodes
@@ -280,9 +292,18 @@ export const createGraphRunnable = ({
         )
         .map(toResult(true))
         .catch(toResult(false))
+        .watch(() => {
+          runningIds = runningIds.filter((v) => v != executionId);
+        })
         .unwrap();
     },
   };
+  runnable.use(() => {
+    if (exitReason != undefined)
+      throw new GraphError(GraphErrorCode.EXIT, {
+        message: exitReason || 'execute exit',
+      });
+  });
 
   return runnable;
 };

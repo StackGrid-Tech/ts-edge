@@ -29,6 +29,7 @@ export enum GraphErrorCode {
 
   // System Errors (9000-9999)
   UNKNOWN_ERROR = 'Unknown error occurred in graph execution',
+  EXIT = 'EXIT',
 }
 
 /**

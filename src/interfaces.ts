@@ -326,6 +326,8 @@ export interface GraphRunnable<
    */
   run(input: InputOf<T, StartNode>, options?: Partial<GraphRunOptions>): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
 
+  exit(reason?: string): void;
+
   use(
     middleware: (node: GraphNodeWithOutOutput<T>, next: (route?: GraphNodeWithOutOutput<T>) => void) => any
   ): GraphRunnable<T, StartNode, EndNode>;
