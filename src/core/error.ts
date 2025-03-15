@@ -21,6 +21,7 @@ export enum GraphErrorCode {
   THREAD_POOL_FAILURE = 'Thread pool execution failed',
   EXECUTION_ABORTED = 'Graph execution was aborted',
   MIDDLEWARE_FAIL = 'Error thrown in graph middleware',
+  EXIT = 'EXIT',
 
   // Data Errors (3000-3999)
   INVALID_INPUT = 'Invalid input data provided',
@@ -29,7 +30,6 @@ export enum GraphErrorCode {
 
   // System Errors (9000-9999)
   UNKNOWN_ERROR = 'Unknown error occurred in graph execution',
-  EXIT = 'EXIT',
 }
 
 /**

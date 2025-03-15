@@ -47,10 +47,10 @@ export const createNodeExecutor =
         // Execute node with input
         .map((node) => node.execute(input))
         // Determine next nodes based on edge configuration
-        .map(async (output): Promise<{ name: string[]; output: any }> => {
+        .map(async (output): Promise<{ name: string[]; output: any; exit?: boolean }> => {
           // If we're at the end node or there's no edge, return empty targets
           if ((!isNull(end) && name == end) || !node.edge) {
-            return { name: [], output };
+            return { name: [], output, exit: true };
           }
 
           // Handle direct edges
@@ -74,7 +74,7 @@ export const createNodeExecutor =
         })
         // Handle default branch if no next nodes but we have a merge target
         .map((next) => {
-          if (!next.name.length && baseBranch.length && (isNull(end) || name != end)) {
+          if (!next.name.length && baseBranch.length && !next.exit) {
             return { name: baseBranch, output: next.output };
           }
           return next;

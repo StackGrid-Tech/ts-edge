@@ -12,7 +12,7 @@ import {
 import { createPubSub, PromiseChain, randomId, withTimeout } from '../shared';
 import { createNodeExecutor } from './node-executor';
 import { createVirtualThreadPool } from './thread-pool';
-import { GraphError, GraphErrorCode, GraphExecutionError } from './error';
+import { GraphErrorCode, GraphExecutionError } from './error';
 
 /**
  * Creates a runnable graph from a registry configuration
@@ -298,10 +298,11 @@ export const createGraphRunnable = ({
         .unwrap();
     },
   };
-  runnable.use(() => {
+  runnable.use((node) => {
     if (exitReason != undefined)
-      throw new GraphError(GraphErrorCode.EXIT, {
-        message: exitReason || 'execute exit',
+      throw new GraphExecutionError(GraphErrorCode.EXIT, {
+        message: exitReason || 'Exit',
+        nodeName: node.name,
       });
   });
 

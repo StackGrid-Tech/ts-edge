@@ -688,4 +688,168 @@ describe('Workflow Module', () => {
       expect(result.error?.message).toContain('Middleware error');
     });
   });
+  describe('Advanced Dynamic Edge Routing', () => {
+    it('should support possible targets array with router function', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => ({ value: input }),
+        })
+        .addNode({
+          name: 'highValueProcess',
+          execute: (data: { value: number }) => ({ ...data, result: 'high value' }),
+        })
+        .addNode({
+          name: 'standardProcess',
+          execute: (data: { value: number }) => ({ ...data, result: 'standard' }),
+        })
+        .addNode({
+          name: 'errorHandler',
+          execute: (data: { value: number }) => ({ ...data, result: 'error' }),
+        })
+        .dynamicEdge('start', {
+          possibleTargets: ['highValueProcess', 'errorHandler', 'standardProcess'],
+          router: (data) => {
+            if (data.value > 100) return ['highValueProcess', 'standardProcess'];
+            if (data.value < 0) return 'errorHandler';
+            return 'standardProcess';
+          },
+        });
+
+      // Test high value path (should go to both highValueProcess and standardProcess)
+      const app1 = workflow.compile('start');
+      const result1 = await app1.run(150);
+      expect(result1.isOk).toBe(true);
+
+      // highValueProcess 또는 standardProcess가 실행되었는지 확인
+      const nodeNames1 = result1.histories.map((h) => h.node.name);
+      expect(nodeNames1).toContain('highValueProcess');
+      expect(nodeNames1).toContain('standardProcess');
+
+      // highValueProcess 노드의 결과 확인
+      const highValueNode = result1.histories.find((h) => h.node.name === 'highValueProcess');
+      expect(highValueNode?.node.output).toHaveProperty('result', 'high value');
+
+      // Test error path
+      const app2 = workflow.compile('start');
+      const result2 = await app2.run(-10);
+      expect(result2.isOk).toBe(true);
+
+      // errorHandler가 실행되었는지 확인
+      const nodeNames2 = result2.histories.map((h) => h.node.name);
+      expect(nodeNames2).toContain('errorHandler');
+
+      // errorHandler 노드의 결과 확인
+      const errorNode = result2.histories.find((h) => h.node.name === 'errorHandler');
+      expect(errorNode?.node.output).toHaveProperty('result', 'error');
+
+      // Test standard path
+      const app3 = workflow.compile('start');
+      const result3 = await app3.run(50);
+      expect(result3.isOk).toBe(true);
+
+      // standardProcess가 실행되었는지 확인
+      const nodeNames3 = result3.histories.map((h) => h.node.name);
+      expect(nodeNames3).toContain('standardProcess');
+
+      // standardProcess 노드의 결과 확인
+      const standardNode = result3.histories.find((h) => h.node.name === 'standardProcess');
+      expect(standardNode?.node.output).toHaveProperty('result', 'standard');
+    });
+
+    it('should support multi-target routing with end node specified', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => ({ value: input }),
+        })
+        .addNode({
+          name: 'process1',
+          execute: (data: { value: number }) => ({ ...data, result: 'process1' }),
+        })
+        .addNode({
+          name: 'process2',
+          execute: (data: { value: number }) => ({ ...data, result: 'process2' }),
+        })
+        .addNode({
+          name: 'final',
+          execute: (data: { value: number; result: string }) => `Final: ${data.result}`,
+        })
+        .dynamicEdge('start', {
+          possibleTargets: ['process1', 'process2'],
+          router: () => {
+            // 두 프로세스 모두 실행
+            return ['process1', 'process2'];
+          },
+        })
+        .edge('process1', 'final')
+        .edge('process2', 'final');
+
+      // 테스트 1: 마지막 노드를 지정했을 때 올바르게 실행되는지
+      const app = workflow.compile('start', 'final');
+      const result = await app.run(100);
+
+      expect(result.isOk).toBe(true);
+
+      // process1, process2가 둘 다 실행되었는지 확인
+      const nodeNames = result.histories.map((h) => h.node.name);
+      expect(nodeNames).toContain('process1');
+      expect(nodeNames).toContain('process2');
+
+      // final 노드가 실행되었는지 확인
+      expect(nodeNames).toContain('final');
+
+      // final 노드가 마지막으로 실행되었는지 확인
+      expect(nodeNames[nodeNames.length - 1]).toBe('final');
+
+      // 결과가 정확한지 확인 (process1이나 process2 중 하나에서 온 결과)
+      expect(['Final: process1', 'Final: process2']).toContain(result.output);
+    });
+  });
+
+  describe('Graph Execution Control', () => {
+    it('should allow stopping execution with exit method', async () => {
+      const processingSpy = vi.fn();
+
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input,
+        })
+        .addNode({
+          name: 'longProcess',
+          execute: async (input: number) => {
+            // This simulates a long-running process
+            await delay(500);
+
+            return input * 2;
+          },
+        })
+        .addNode({
+          name: 'output',
+          execute: (v) => {
+            processingSpy();
+            return v;
+          },
+        })
+        .edge('start', 'longProcess')
+        .edge('longProcess', 'output');
+
+      const app = workflow.compile('start');
+
+      // Create a promise that calls exit after a delay
+      const exitPromise = delay(100).then(() => {
+        app.exit('Test termination');
+      });
+
+      // Run the workflow and wait for both promises
+      const result = await Promise.all([app.run(5), exitPromise]).then(([res]) => res);
+
+      // Check that execution was stopped
+      expect(result.isOk).toBe(false);
+      expect(result.error?.message).toContain('Test termination');
+      // The longProcess node should not have completed
+      expect(processingSpy).not.toHaveBeenCalled();
+    });
+  });
 });

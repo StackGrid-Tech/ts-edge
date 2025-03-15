@@ -56,6 +56,22 @@ export const Deferred = () => {
   };
 };
 
+export class Locker {
+  private context = Deferred();
+  constructor() {
+    this.unlock();
+  }
+  async wait() {
+    await this.context.promise;
+  }
+  unlock() {
+    this.context.resolve();
+  }
+  lock() {
+    this.context = Deferred();
+  }
+}
+
 export const PromiseChain = () => {
   let lastPromise: Promise<any> = Promise.resolve();
   return <T>(asyncFunction: () => Promise<T>): Promise<T> => {
