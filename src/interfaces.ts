@@ -1,3 +1,5 @@
+import { StoreState } from './core/create-state';
+
 /**
  * Base interface for a graph node.
  * Represents an executable unit that processes input data and produces output.
@@ -265,6 +267,8 @@ export type GraphResult<T extends GraphNode = never, Output = unknown> = {
     }
 );
 
+type Router<T, U> = (output: T) => U | U[] | undefined | null | void | PromiseLike<U | U[] | undefined | null | void>;
+
 /**
  * Function that determines the next node to execute based on a previous node's output.
  * Used for dynamic routing between nodes.
@@ -277,16 +281,7 @@ export type GraphNodeRouter<
   AllNode extends GraphNode,
   FromNodeName extends AllNode['name'],
   ConnectableNodeName extends AllNode['name'],
-> = (
-  output: Extract<AllNode, { name: FromNodeName }>['output']
-) =>
-  | ConnectableNodeName
-  | ConnectableNodeName[]
-  | undefined
-  | null
-  | void
-  | PromiseLike<ConnectableNodeName | ConnectableNodeName[] | undefined | null | void>;
-
+> = Router<Extract<AllNode, { name: FromNodeName }>['output'], ConnectableNodeName>;
 /**
  * Interface for a runnable graph workflow.
  * Provides methods to execute, visualize, and monitor the graph.
@@ -413,6 +408,47 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
     startNode: StartName,
     endNode?: EndName
   ): GraphRunnable<T, StartName, EndName>;
+}
+
+export interface StateGraphRegistry<
+  T extends StoreState = StoreState,
+  NodeName extends string = never,
+  Connected extends string = never,
+> {
+  addNode<Name extends string = string, Output = any>(node: {
+    name: Name;
+    execute: (state: T) => Output;
+    metadata?: GraphNodeMatadata;
+  }): StateGraphRegistry<T, NodeName | Name, Connected>;
+
+  addMergeNode<Name extends string, Branch extends NodeName[]>(mergeNode: {
+    branch: Branch;
+    name: Name;
+    execute: (state: T) => any;
+    metadata?: GraphNodeMatadata;
+  }): StateGraphRegistry<T, NodeName | Name, Connected>;
+
+  edge<FromName extends Exclude<NodeName, Connected>, ToName extends Exclude<NodeName, FromName>>(
+    from: FromName,
+    to: ToName | ToName[]
+  ): StateGraphRegistry<T, NodeName, Connected | FromName>;
+
+  dynamicEdge<FromName extends Exclude<NodeName, Connected>, PossibleNode extends NodeName[]>(
+    from: FromName,
+    routerOrConfig:
+      | Router<T, NodeName>
+      | {
+          possibleTargets: [...PossibleNode];
+          router: Router<T, NodeName>;
+        }
+  ): StateGraphRegistry<T, Connected | FromName>;
+
+  compile<StartName extends string = NodeName, EndName extends string = NodeName>(
+    startNode: StartName,
+    endNode?: EndName
+  ): Omit<GraphRunnable<GraphNode<NodeName, T, T>, NodeName, NodeName>, 'run'> & {
+    run(options?: Partial<GraphRunOptions>): Promise<GraphResult<GraphNode<NodeName, T, T>, T>>;
+  };
 }
 
 export type GraphNodeContext = {

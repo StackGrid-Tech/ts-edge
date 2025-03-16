@@ -1,4 +1,5 @@
 import { GraphNode, GraphNodeMatadata, GraphNodeRouter } from '../interfaces';
+import { StoreState } from './create-state';
 
 export const graphNode = <Name extends string = string, Input = any, Output = any>(node: {
   name: Name;
@@ -35,4 +36,12 @@ export const graphMergeNode = <Name extends string, Branch extends readonly stri
   execute: (inputs: { [K in Branch[number]]: any }) => Output;
 }) => {
   return mergedNode;
+};
+
+export const graphStateNode = <State extends StoreState, Name extends string, Output = any>(node: {
+  name: Name;
+  execute: (state: State) => Output;
+  metadata?: GraphNodeMatadata;
+}) => {
+  return node;
 };
