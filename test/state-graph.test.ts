@@ -115,7 +115,7 @@ describe('StateGraph Module', () => {
     counter.set({ count: 5 });
 
     app = workflow.compile('checkCount');
-    result = await app.run();
+    result = await app.run(undefined, { noResetState: true });
 
     expect(result.isOk).toBe(true);
     expect(counter().count).toBe(4);
@@ -217,11 +217,11 @@ describe('StateGraph Module', () => {
     await app.run();
     expect(counter().count).toBe(1);
 
-    await app.run();
+    await app.run(undefined, { noResetState: true });
     expect(counter().count).toBe(2);
 
     await app.run();
-    expect(counter().count).toBe(3);
+    expect(counter().count).toBe(1);
   });
 
   it('should support complex state-based decision making', async () => {
@@ -278,7 +278,7 @@ describe('StateGraph Module', () => {
 
     counter.set({ count: 5 });
     app = workflow.compile('evaluateCount');
-    await app.run();
+    await app.run(undefined, { noResetState: true });
 
     expect(counter().count).toBe(20);
     expect(executedPaths).toEqual(['evaluateCount', 'handleSmall']);
@@ -286,7 +286,7 @@ describe('StateGraph Module', () => {
     executedPaths.length = 0;
 
     app = workflow.compile('evaluateCount');
-    await app.run();
+    await app.run(undefined, { noResetState: true });
 
     expect(counter().count).toBe(35);
     expect(executedPaths).toEqual(['evaluateCount', 'handleSmall']);

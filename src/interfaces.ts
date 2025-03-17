@@ -590,7 +590,14 @@ export interface StateGraphRegistry<
      * @param options - Optional configuration for execution
      * @returns Promise resolving to the execution result, including the final state
      */
-    run(input?: Partial<T>, options?: Partial<GraphRunOptions>): Promise<GraphResult<GraphNode<NodeName, T, T>, T>>;
+    run(
+      input?: Partial<T>,
+      options?: Partial<
+        GraphRunOptions & {
+          noResetState?: boolean;
+        }
+      >
+    ): Promise<GraphResult<GraphNode<NodeName, T, T>, T>>;
   };
 }
 export type GraphNodeContext = {

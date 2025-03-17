@@ -175,6 +175,7 @@ export const createStateGraph = <T extends GraphStoreState>(store: GraphStore<T>
     const runnable = originCompile(start, end);
     const originalRun = runnable.run as Function;
     runnable.run = (input, options) => {
+      if (!(options as any)?.noResetState) store.reset();
       if (!isNull(input)) store.set(input);
       return originalRun(undefined, options);
     };
