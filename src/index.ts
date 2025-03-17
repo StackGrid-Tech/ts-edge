@@ -1,6 +1,8 @@
-export { graphNode, graphNodeRouter, graphMergeNode } from './core/helper';
+export { graphNode, graphNodeRouter, graphMergeNode, graphStateNode } from './core/helper';
 
-export { createGraph } from './core/registry';
+export { createGraph, createStateGraph } from './core/registry';
+
+export { GraphStore, GraphStoreInitializer, graphStore } from './core/create-state';
 
 export { GraphConfigurationError, GraphDataError, GraphError, GraphErrorCode, GraphExecutionError } from './core/error';
 

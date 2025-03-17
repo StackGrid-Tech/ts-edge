@@ -1,4 +1,4 @@
-import { StoreState } from './core/create-state';
+import { GraphStoreState } from './core/create-state';
 
 /**
  * Base interface for a graph node.
@@ -411,7 +411,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
 }
 
 export interface StateGraphRegistry<
-  T extends StoreState = StoreState,
+  T extends GraphStoreState = GraphStoreState,
   NodeName extends string = never,
   Connected extends string = never,
 > {
@@ -424,7 +424,7 @@ export interface StateGraphRegistry<
   addMergeNode<Name extends string, Branch extends NodeName[]>(mergeNode: {
     branch: Branch;
     name: Name;
-    execute: (state: T) => any;
+    execute: (inputs: { [K in Branch[number]]: T }) => any;
     metadata?: GraphNodeMatadata;
   }): StateGraphRegistry<T, NodeName | Name, Connected>;
 
@@ -447,7 +447,7 @@ export interface StateGraphRegistry<
     startNode: StartName,
     endNode?: EndName
   ): Omit<GraphRunnable<GraphNode<NodeName, T, T>, NodeName, NodeName>, 'run'> & {
-    run(options?: Partial<GraphRunOptions>): Promise<GraphResult<GraphNode<NodeName, T, T>, T>>;
+    run(input?: Partial<T>, options?: Partial<GraphRunOptions>): Promise<GraphResult<GraphNode<NodeName, T, T>, T>>;
   };
 }
 

@@ -33,12 +33,12 @@ describe('StateGraph Module', () => {
     });
 
     const app = workflow.compile('incrementNode');
-    const result = await app.run();
+    const result = await app.run({ count: 5 });
 
     expect(result.isOk).toBe(true);
-    expect(counter().count).toBe(1);
+    expect(counter().count).toBe(6);
     expect(result.output).toBe(counter());
-    expect(result.output?.count).toBe(1);
+    expect(result.output?.count).toBe(6);
   });
 
   it('should execute multiple nodes in sequence', async () => {
@@ -144,7 +144,8 @@ describe('StateGraph Module', () => {
         name: 'mergeBranches',
         branch: ['incrementBranch', 'addAmountBranch'],
         execute: (state) => {
-          expect(state).toBe(counter());
+          expect(state.addAmountBranch).toBe(counter());
+          expect(state.incrementBranch).toBe(counter());
         },
       })
       .edge('start', ['incrementBranch', 'addAmountBranch']);
@@ -277,7 +278,6 @@ describe('StateGraph Module', () => {
     counter.set({ count: 5 });
     app = workflow.compile('evaluateCount');
     await app.run();
-    console.log(executedPaths);
 
     expect(counter().count).toBe(20);
     expect(executedPaths).toEqual(['evaluateCount', 'handleSmall']);

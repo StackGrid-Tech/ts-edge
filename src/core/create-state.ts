@@ -1,4 +1,4 @@
-export type StoreState = Record<string, any>;
+export type GraphStoreState = Record<string, any>;
 export type StateSetter<T> = Partial<T> | ((prev: T) => Partial<T>);
 
 const updateState = <T>(current: T, update: StateSetter<T>): T => {
@@ -6,17 +6,19 @@ const updateState = <T>(current: T, update: StateSetter<T>): T => {
   return Object.assign(current ?? {}, partial) as T;
 };
 
-export type GraphStoreInitializer<T extends StoreState> = {
-  (setState: (update: StateSetter<T>) => void, getState: () => T): T;
+export type GraphStoreInitializer<T extends GraphStoreState> = {
+  (set: (update: StateSetter<T>) => void, get: () => T): T;
 };
 
-export type GraphStore<T extends StoreState> = {
+export type GraphStore<T extends GraphStoreState> = {
   (): T;
   set: (update: StateSetter<T>) => void;
   reset: () => void;
 };
 
-export const graphStore = <T extends StoreState = StoreState>(initializer: GraphStoreInitializer<T>): GraphStore<T> => {
+export const graphStore = <T extends GraphStoreState = GraphStoreState>(
+  initializer: GraphStoreInitializer<T>
+): GraphStore<T> => {
   let state: T;
 
   const getState = () => state;

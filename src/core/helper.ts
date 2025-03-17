@@ -1,5 +1,5 @@
 import { GraphNode, GraphNodeMatadata, GraphNodeRouter } from '../interfaces';
-import { StoreState } from './create-state';
+import { GraphStoreState } from './create-state';
 
 export const graphNode = <Name extends string = string, Input = any, Output = any>(node: {
   name: Name;
@@ -38,7 +38,7 @@ export const graphMergeNode = <Name extends string, Branch extends readonly stri
   return mergedNode;
 };
 
-export const graphStateNode = <State extends StoreState, Name extends string, Output = any>(node: {
+export const graphStateNode = <State extends GraphStoreState, Name extends string, Output = any>(node: {
   name: Name;
   execute: (state: State) => Output;
   metadata?: GraphNodeMatadata;

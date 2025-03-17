@@ -1,8 +1,9 @@
 import { GraphRegistry, GraphRegistryContext, StateGraphRegistry } from '../interfaces';
 import { createGraphRunnable } from './runable';
 import { GraphConfigurationError, GraphErrorCode } from './error';
-import { GraphStore, StoreState } from './create-state';
+import { GraphStore, GraphStoreState } from './create-state';
 import { safe } from 'ts-safe';
+import { isNull } from '../shared';
 
 export const createGraph = (): GraphRegistry => {
   const context: GraphRegistryContext = new Map();
@@ -139,7 +140,7 @@ export const createGraph = (): GraphRegistry => {
   return registry;
 };
 
-export const createStateGraph = <T extends StoreState>(store: GraphStore<T>): StateGraphRegistry<T> => {
+export const createStateGraph = <T extends GraphStoreState>(store: GraphStore<T>): StateGraphRegistry<T> => {
   const registry = createGraph();
 
   const originAddNode = registry.addNode;
@@ -161,8 +162,8 @@ export const createStateGraph = <T extends StoreState>(store: GraphStore<T>): St
   registry.addMergeNode = (node) => {
     originAddMergeNode({
       ...node,
-      execute: () => {
-        return safe(() => (node.execute as Function)(store()))
+      execute: (inputs) => {
+        return safe(() => node.execute(inputs))
           .map(() => store())
           .unwrap();
       },
@@ -173,7 +174,10 @@ export const createStateGraph = <T extends StoreState>(store: GraphStore<T>): St
   registry.compile = (start, end) => {
     const runnable = originCompile(start, end);
     const originalRun = runnable.run as Function;
-    runnable.run = originalRun.bind(null, store());
+    runnable.run = (input, options) => {
+      if (!isNull(input)) store.set(input);
+      return originalRun(undefined, options);
+    };
     return runnable as any;
   };
 
