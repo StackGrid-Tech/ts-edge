@@ -24,5 +24,6 @@ export type {
   GraphRegistry,
   GraphNodeWithOutOutput,
   GraphNodeWithOptionalOutput,
+  StateGraphRunnable,
   ConnectableNode,
 } from './interfaces';

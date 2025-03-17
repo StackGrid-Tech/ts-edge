@@ -346,6 +346,25 @@ export interface GraphRunnable<
   ): GraphRunnable<T, StartNode, EndNode>;
 }
 
+export interface StateGraphRunnable<
+  T extends GraphNode = never,
+  StartNode extends T['name'] = never,
+  EndNode extends T['name'] = never,
+> extends Omit<GraphRunnable<T, StartNode, EndNode>, 'run' | 'use'> {
+  run(
+    input?: Partial<T['input']>,
+    options?: Partial<
+      GraphRunOptions & {
+        noResetState?: boolean;
+      }
+    >
+  ): Promise<GraphResult<T, T['output']>>;
+
+  use(
+    middleware: (node: GraphNodeWithOutOutput<T>, next: (route?: GraphNodeWithOutOutput<T>) => void) => any
+  ): StateGraphRunnable<T, StartNode, EndNode>;
+}
+
 /**
  * Interface for building and configuring a graph.
  * Provides methods to add nodes, define edges, and compile the graph into a runnable workflow.
@@ -579,27 +598,12 @@ export interface StateGraphRegistry<
    * const result = await app.run();
    * ```
    */
-  compile<StartName extends string = NodeName, EndName extends string = NodeName>(
+  compile<StartName extends NodeName = NodeName, EndName extends NodeName = NodeName>(
     startNode: StartName,
     endNode?: EndName
-  ): Omit<GraphRunnable<GraphNode<NodeName, T, T>, NodeName, NodeName>, 'run'> & {
-    /**
-     * Executes the state graph workflow.
-     *
-     * @param input - Optional initial/partial state to set before execution
-     * @param options - Optional configuration for execution
-     * @returns Promise resolving to the execution result, including the final state
-     */
-    run(
-      input?: Partial<T>,
-      options?: Partial<
-        GraphRunOptions & {
-          noResetState?: boolean;
-        }
-      >
-    ): Promise<GraphResult<GraphNode<NodeName, T, T>, T>>;
-  };
+  ): StateGraphRunnable<GraphNode<NodeName, T, T>, StartName, EndName>;
 }
+
 export type GraphNodeContext = {
   execute: Function;
   metadata: GraphNodeMatadata;
