@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
-import type { GraphEvent } from '../src/interfaces';
+import type { GraphEvent, GraphNodeStreamEvent } from '../src/interfaces';
 import { delay } from '../src/shared';
 import { graphMergeNode, graphNodeRouter } from '../src/core/helper';
 import { createGraph } from '../src/core/registry';
@@ -179,6 +179,83 @@ describe('Workflow Module', () => {
       expect(events[1].node.name).toBe('start');
       expect(events[2].eventType).toBe('NODE_END');
       expect(events[5].eventType).toBe('WORKFLOW_END');
+    });
+
+    it('should emit stream events when node uses context.stream()', async () => {
+      const workflow = createGraph().addNode({
+        name: 'streamingNode',
+        execute: (input: number, context) => {
+          // 여러 청크 스트리밍 시뮬레이션
+          context.stream('첫 번째 청크');
+          context.stream('두 번째 청크');
+          context.stream('마지막 청크');
+          return input * 2;
+        },
+      });
+
+      const app = workflow.compile('streamingNode');
+
+      const allEvents: GraphEvent[] = [];
+      const streamEvents: GraphNodeStreamEvent[] = [];
+
+      const handler = (event: GraphEvent) => {
+        allEvents.push(event);
+        if (event.eventType === 'NODE_STREAM') {
+          streamEvents.push(event as GraphNodeStreamEvent);
+        }
+      };
+
+      app.subscribe(handler);
+      await app.run(10);
+      app.unsubscribe(handler);
+
+      // 스트림 이벤트 검증
+      expect(streamEvents).toHaveLength(3);
+      expect(streamEvents[0].eventType).toBe('NODE_STREAM');
+      expect(streamEvents[0].node.name).toBe('streamingNode');
+      expect(streamEvents[0].node.chunk).toBe('첫 번째 청크');
+
+      expect(streamEvents[1].node.chunk).toBe('두 번째 청크');
+      expect(streamEvents[2].node.chunk).toBe('마지막 청크');
+
+      // 모든 이벤트의 전체 개수 검증
+      expect(allEvents).toHaveLength(7); // WORKFLOW_START + NODE_START + 3*NODE_STREAM + NODE_END + WORKFLOW_END
+    });
+
+    it('should handle async streaming in correct order', async () => {
+      const workflow = createGraph().addNode({
+        name: 'asyncStreamingNode',
+        execute: async (input: number, context) => {
+          // 비동기 스트리밍 시뮬레이션
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          context.stream('비동기 청크 1');
+
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          context.stream('비동기 청크 2');
+
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          context.stream('비동기 청크 3');
+
+          return input * 3;
+        },
+      });
+
+      const app = workflow.compile('asyncStreamingNode');
+
+      const streamChunks: string[] = [];
+
+      const handler = (event: GraphEvent) => {
+        if (event.eventType === 'NODE_STREAM') {
+          streamChunks.push((event as GraphNodeStreamEvent).node.chunk);
+        }
+      };
+
+      app.subscribe(handler);
+      await app.run(5);
+      app.unsubscribe(handler);
+
+      // 스트리밍 순서 검증
+      expect(streamChunks).toEqual(['비동기 청크 1', '비동기 청크 2', '비동기 청크 3']);
     });
   });
 

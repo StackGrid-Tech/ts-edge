@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createStateGraph } from '../src/core/registry';
 import { graphStore } from '../src/core/create-state';
+import { graphStateNode } from '../src';
 
 describe('StateGraph Module', () => {
   type CounterStore = {
@@ -294,13 +295,15 @@ describe('StateGraph Module', () => {
   it('should handle addMergeNode correctly', async () => {
     const executedPaths: string[] = [];
 
+    const stateNode = graphStateNode({
+      name: 'start',
+      execute() {
+        executedPaths.push('start');
+      },
+    });
+
     const workflow = createStateGraph(counter)
-      .addNode({
-        name: 'start',
-        execute: () => {
-          executedPaths.push('start');
-        },
-      })
+      .addNode(stateNode)
       .addNode({
         name: 'path1',
         execute: (state) => {

@@ -150,8 +150,8 @@ export const createStateGraph = <T extends GraphStoreState>(store: GraphStore<T>
   registry.addNode = (node) => {
     originAddNode({
       ...node,
-      execute: () => {
-        return safe(() => (node.execute as Function)(store()))
+      execute: (_, context) => {
+        return safe(() => (node.execute as Function)(store(), context))
           .map(() => store())
           .unwrap();
       },
@@ -162,8 +162,8 @@ export const createStateGraph = <T extends GraphStoreState>(store: GraphStore<T>
   registry.addMergeNode = (node) => {
     originAddMergeNode({
       ...node,
-      execute: (inputs) => {
-        return safe(() => node.execute(inputs))
+      execute: (inputs, context) => {
+        return safe(() => node.execute(inputs, context))
           .map(() => store())
           .unwrap();
       },

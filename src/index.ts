@@ -10,6 +10,7 @@ export type {
   GraphNode,
   GraphNodeEndEvent,
   GraphNodeStartEvent,
+  GraphNodeStreamEvent,
   GraphNodeHistory,
   GraphEvent,
   GraphEndEvent,
