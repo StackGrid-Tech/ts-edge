@@ -151,8 +151,8 @@ export const createStateGraph = <T extends GraphStoreState>(store: GraphStore<T>
     originAddNode({
       ...node,
       execute: (_, context) => {
-        return safe(() => (node.execute as Function)(store(), context))
-          .map(() => store())
+        return safe(() => (node.execute as Function)(store.get(), context))
+          .map(() => store.get())
           .unwrap();
       },
     });
@@ -164,7 +164,7 @@ export const createStateGraph = <T extends GraphStoreState>(store: GraphStore<T>
       ...node,
       execute: (inputs, context) => {
         return safe(() => node.execute(inputs, context))
-          .map(() => store())
+          .map(() => store.get())
           .unwrap();
       },
     });

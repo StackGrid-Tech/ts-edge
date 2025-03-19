@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { graphStore } from '../src/core/create-state';
+import { graphState, graphStore } from '../src/core/create-state';
 
 describe('graphStore', () => {
   it('should create a store with initial state', () => {
@@ -160,5 +160,17 @@ describe('graphStore', () => {
 
     store.reset();
     expect(store().count).toBe(0);
+  });
+
+  it('state', () => {
+    const store = graphState({ name: '', age: 0 });
+
+    const { state, setState } = store.get();
+
+    expect(state.age).toBe(0);
+    setState({ age: 10 });
+    expect(state.age).toBe(10);
+    setState((prev) => ({ age: prev.age + 90 }));
+    expect(state.age).toBe(100);
   });
 });

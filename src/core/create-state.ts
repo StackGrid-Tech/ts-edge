@@ -12,8 +12,9 @@ export type GraphStoreInitializer<T extends GraphStoreState> = {
 
 export type GraphStore<T extends GraphStoreState> = {
   (): T;
-  set: (update: StateSetter<T>) => void;
-  reset: () => void;
+  get(): T;
+  set(update: StateSetter<T>): void;
+  reset(): void;
 };
 
 export const graphStore = <T extends GraphStoreState = GraphStoreState>(
@@ -30,10 +31,25 @@ export const graphStore = <T extends GraphStoreState = GraphStoreState>(
   state = initializer(setState, getState);
   const initialState = { ...state } as T;
 
+  getState.get = getState;
   getState.set = setState;
-  getState.reset = () => {
-    state = { ...initialState };
-  };
+  getState.reset = () => setState({ ...initialState });
 
   return getState;
+};
+
+export const graphState = <T extends GraphStoreState = GraphStoreState>(initialState: T) => {
+  return graphStore<{
+    state: T;
+    setState: (partialState: StateSetter<T>) => void;
+  }>((set) => {
+    return {
+      state: initialState,
+      setState: (partialState: StateSetter<T>) => {
+        set((prev) => ({
+          state: updateState(prev.state, partialState),
+        }));
+      },
+    };
+  });
 };
