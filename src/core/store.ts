@@ -17,7 +17,7 @@ export type GraphStore<T extends GraphStoreState> = {
   reset(): void;
 };
 
-export const createGraphStore = <T extends GraphStoreState = GraphStoreState>(
+export const graphStore = <T extends GraphStoreState = GraphStoreState>(
   initializer: GraphStoreInitializer<T>
 ): GraphStore<T> => {
   let state: T;

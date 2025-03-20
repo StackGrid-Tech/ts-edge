@@ -8,8 +8,8 @@
 
 - [특징](#특징)
 - [설치](#설치)
-- [상태 기반 워크플로우](#상태-기반-워크플로우) - 주요 기능: 노드 간 상태 공유
 - [타입 안전 워크플로우](#타입-안전-워크플로우) - 노드 간 타입 호환성 보장
+- [상태 기반 워크플로우](#상태-기반-워크플로우) - 노드 간 상태 공유
 - [주요 기능](#주요-기능)
 - [도우미 함수](#도우미-함수)
 
@@ -25,97 +25,6 @@
 
 ```bash
 npm install ts-edge
-```
-
-## 상태 기반 워크플로우
-
-ts-edge의 주요 기능은 노드 간에 공유 상태를 사용하는 상태 기반 워크플로우입니다:
-
-```typescript
-import { createStateGraph, graphStore } from 'ts-edge';
-
-// 카운터 상태 타입 정의
-type CounterState = {
-  count: number;
-  name: string;
-};
-
-// graphStore를 사용한 상태 스토어 생성
-const store = graphStore<CounterState>({
-  count: 0,
-  name: '',
-});
-
-// 상태 기반 워크플로우 생성
-// 상태 기반 워크플로우에서는 노드들이 공통 상태를 공유하고 수정합니다
-// 참고: 상태 노드의 반환값은 무시됩니다
-const workflow = createStateGraph(store)
-  .addNode({
-    name: 'increment',
-    execute: ({ state, setState }) => {
-      // 스토어 타입은 자동으로 추론됩니다
-      // 상태에 접근
-      console.log(state); // {count:?, name:?}
-
-      // 함수 기반 setter로 상태 업데이트
-      setState((prev) => {
-        return { count: prev.count + 1 };
-      });
-    },
-  })
-  .addNode({
-    name: 'checkCount',
-    execute: ({ state }) => {
-      // 상태를 기반으로 로직 수행
-      console.log(`현재 카운트: ${state.count}`);
-    },
-  })
-  .addNode({
-    name: 'reset',
-    execute: ({ setState }) => {
-      // 상태 초기화
-      setState({ count: 0, name: '' });
-    },
-  })
-  .edge('increment', 'checkCount')
-  .dynamicEdge('checkCount', ({ state }) => {
-    // 상태를 기반으로 다음 노드 결정
-    return state.count > 10 ? 'reset' : 'increment';
-  });
-
-// 워크플로우 컴파일 및 실행
-const app = workflow.compile('increment');
-const result = await app.run(); // 초기 상태로 시작
-// 또는 부분 상태로 시작: await app.run({name:'사용자'});
-
-console.log(result.output); // {state, setState} 객체
-```
-
-별도 파일에서 노드를 정의할 때는 `graphStateNode`와 명시적 타입 추론을 사용합니다:
-
-```typescript
-import { graphStateNode, graphStore } from 'ts-edge';
-
-// 상태 정의 및 스토어 생성
-type CounterState = { count: number };
-const store = graphStore<CounterState>({ count: 0 });
-
-// 외부 노드 정의를 위한 스토어 타입 가져오기
-type CounterStore = graphStore.infer<CounterState>;
-
-// 별도 파일/모듈에서 노드 정의
-const countNode = graphStateNode({
-  name: 'processCount',
-  execute: ({ state, setState }: CounterStore) => {
-    if (state.count < 10) {
-      setState({ count: 10 });
-    }
-  },
-});
-
-// 상태 그래프에서 사용
-const stateGraph = createStateGraph(store);
-stateGraph.addNode(countNode);
 ```
 
 ## 타입 안전 워크플로우
@@ -157,6 +66,72 @@ const workflow = createGraph()
 const app = workflow.compile('number to string');
 const result = await app.run(100);
 console.log(result.output); // [1,2,3]
+```
+
+## 상태 기반 워크플로우
+
+노드 간에 공유 상태를 사용하는 상태 기반 워크플로우입니다:
+
+```typescript
+import { createStateGraph, graphStore } from 'ts-edge';
+
+// 카운터 상태 타입 정의
+type CounterState = {
+  count: number;
+  increment: () => void;
+  decrement: () => void;
+  updateCount: (count: number) => void;
+};
+
+// graphStore를 사용한 상태 스토어 생성
+const store = graphStore<CounterState>((set, get) => {
+  return {
+    count: 0,
+    increment: () =>
+      set((prev) => {
+        return { count: prev.count + 1 };
+      }),
+    decrement: () => set({ count: get().count - 1 }),
+    updateCount: (count: number) => set({ count }),
+  };
+});
+
+// 상태 기반 워크플로우 생성
+// 상태 기반 워크플로우에서는 노드들이 공통 상태를 공유하고 수정합니다
+// 참고: 상태 노드의 반환값은 무시됩니다
+const workflow = createStateGraph(store)
+  .addNode({
+    name: 'increment',
+    execute: (state) => {
+      // 상태에 접근
+      console.log(state.count); // 0
+
+      state.increment();
+    },
+  })
+  .addNode({
+    name: 'checkCount',
+    execute: (state) => {
+      console.log(`현재 카운트: ${state.count}`);
+    },
+  })
+  .addNode({
+    name: 'reset',
+    execute: (state) => {
+      // 상태 초기화
+      state.updateCount(0);
+    },
+  })
+  .edge('increment', 'checkCount')
+  .dynamicEdge('checkCount', (state) => {
+    // 상태를 기반으로 다음 노드 결정
+    return state.count > 10 ? 'reset' : 'increment';
+  });
+
+// 워크플로우 컴파일 및 실행
+const app = workflow.compile('increment');
+const result = await app.run(); // 초기 상태로 시작
+// 또는 부분 상태로 시작: await app.run({ count:10 });
 ```
 
 ## 주요 기능
@@ -257,73 +232,6 @@ const workflow = createGraph()
     }),
   })
   .edge('fetchData', ['processBranch1', 'processBranch2']); // 한 노드에서 여러 노드로 분기
-```
-
-### 상태 관리
-
-ts-edge는 두 가지 스토어 생성 방식을 제공합니다:
-
-#### 1. createGraphStore - Zustand 스타일의 고급 상태 관리
-
-```typescript
-type CounterStore = {
-  count: number;
-  increment(): void;
-  decrement(): void;
-  reset(): void;
-};
-
-// 액션이 포함된 고급 스토어 직접 생성
-const counterStore = createGraphStore<CounterStore>((set, get) => ({
-  count: 0,
-  increment: () => set({ count: get().count + 1 }),
-  decrement: () => set((state) => ({ count: state.count - 1 })),
-  reset: () => set({ count: 0 }),
-}));
-
-const node = graphStateNode({
-  name: 'increment-node',
-  execute: (state: CounterStore) => {
-    if (state.count < 5) {
-      state.increment();
-    } else {
-      state.reset();
-    }
-  },
-});
-
-const workflow = createStateGraph(counterStore).addNode(node);
-```
-
-#### 2. graphStore - 간단한 상태 객체를 위한 래퍼
-
-```typescript
-type CounterState = {
-  count: number;
-  name: string;
-};
-
-// 간단한 스토어 생성 (내부적으로 createGraphStore 사용)
-const counterStore = graphStore<CounterState>({
-  count: 0,
-  name: '',
-});
-
-// 스토어 타입 추출
-type CounterStore = graphStore.infer<typeof counterStore>;
-
-const node = graphStateNode({
-  name: 'increment-node',
-  execute: ({ state, setState }: CounterStore) => {
-    if (state.count < 5) {
-      setState((prev) => ({ count: prev.count + 1 }));
-    } else {
-      setState({ count: 0 });
-    }
-  },
-});
-
-const workflow = createStateGraph(counterStore).addNode(node);
 ```
 
 ### 실행 옵션
@@ -477,6 +385,46 @@ type UserNodeType = graphNode.infer<typeof userNode>;
 graph.addNode(userNode);
 ```
 
+### `graphStateNode` - 상태 노드 생성
+
+```typescript
+import { graphStateNode, graphStore } from 'ts-edge';
+
+// 상태 정의 및 스토어 생성
+type CounterState = {
+  count: number;
+  name: string;
+  updateCount: (count: number) => void;
+  updateName: (name: string) => void;
+};
+
+const store = graphStore<CounterState>((set) => {
+  return {
+    count: 0,
+    name: '',
+    updateName(name) {
+      set({ name });
+    },
+    updateCount(count) {
+      set({ count });
+    },
+  };
+});
+
+// 별도 파일/모듈에서 노드 정의
+const countNode = graphStateNode({
+  name: 'processCount',
+  execute: ({ count, updateCount }: CounterState) => {
+    if (count < 10) {
+      updateCount(10);
+    }
+  },
+});
+
+// 상태 그래프에서 사용
+const stateGraph = createStateGraph(store).addNode(countNode);
+```
+
 ### `graphMergeNode` - 병합 노드 생성
 
 ```typescript
@@ -510,38 +458,6 @@ const complexRouter = graphNodeRouter(['success', 'warning', 'error'], (data) =>
 
 // 그래프에서 사용
 graph.dynamicEdge('validate', simpleRouter);
-```
-
-### `graphStateNode` - 상태 노드 생성
-
-```typescript
-import { graphStateNode, graphStore } from 'ts-edge';
-
-// 상태 타입 정의
-type CounterState = {
-  count: number;
-};
-
-// 스토어 생성
-const store = graphStore<CounterState>({ count: 0 });
-
-// 스토어 타입 추출
-export type CounterStore = graphStore.infer<CounterState>;
-
-// 상태 노드 생성
-const countNode = graphStateNode({
-  name: 'processCount',
-  execute: ({ state, setState }: CounterStore) => {
-    if (state.count < 10) {
-      setState({ count: 10 });
-    }
-  },
-  metadata: { description: '카운트 처리' },
-});
-
-// 상태 그래프에서 사용
-const stateGraph = createStateGraph(store);
-stateGraph.addNode(countNode);
 ```
 
 ## 라이센스

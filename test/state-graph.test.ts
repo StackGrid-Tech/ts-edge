@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createStateGraph } from '../src/core/registry';
-import { createGraphStore } from '../src/core/store';
+import { graphStore } from '../src/core/store';
 import { graphStateNode } from '../src';
 
 describe('StateGraph Module', () => {
@@ -12,7 +12,7 @@ describe('StateGraph Module', () => {
     isZero: () => boolean;
   };
 
-  const counter = createGraphStore<CounterStore>((set, get) => ({
+  const counter = graphStore<CounterStore>((set, get) => ({
     count: 0,
     increment: () => set({ count: get().count + 1 }),
     decrement: () => set((state) => ({ count: state.count - 1 })),

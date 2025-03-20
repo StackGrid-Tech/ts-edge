@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { createGraphStore } from '../src/core/store';
-import { graphStore } from '../src';
+import { graphStore } from '../src/core/store';
 
-describe('createGraphStore', () => {
+describe('graphStore', () => {
   it('should create a store with initial state', () => {
-    const store = createGraphStore(() => ({
+    const store = graphStore(() => ({
       count: 0,
       name: 'test',
     }));
@@ -14,7 +13,7 @@ describe('createGraphStore', () => {
   });
 
   it('should update state with direct values', () => {
-    const store = createGraphStore<{ count: number }>(() => ({
+    const store = graphStore<{ count: number }>(() => ({
       count: 0,
     }));
 
@@ -23,7 +22,7 @@ describe('createGraphStore', () => {
   });
 
   it('should update state using a function', () => {
-    const store = createGraphStore<{ count: number }>(() => ({
+    const store = graphStore<{ count: number }>(() => ({
       count: 10,
     }));
 
@@ -40,7 +39,7 @@ describe('createGraphStore', () => {
       isZero: () => boolean;
     };
 
-    const counter = createGraphStore<CounterStore>((set, get) => ({
+    const counter = graphStore<CounterStore>((set, get) => ({
       count: 0,
       increment: () => set({ count: get().count + 1 }),
       decrement: () => set((state) => ({ count: state.count - 1 })),
@@ -74,7 +73,7 @@ describe('createGraphStore', () => {
       toggleNotifications: () => void;
     };
 
-    const store = createGraphStore<NestedStore>((set, get) => ({
+    const store = graphStore<NestedStore>((set, get) => ({
       user: {
         name: 'John',
         settings: {
@@ -123,7 +122,7 @@ describe('createGraphStore', () => {
       addTodo: (todo: string) => void;
     };
 
-    const store = createGraphStore<TodoStore>((set, get) => ({
+    const store = graphStore<TodoStore>((set, get) => ({
       todos: [],
       addTodo: (todo) =>
         set({
@@ -140,7 +139,7 @@ describe('createGraphStore', () => {
   });
 
   it('should handle many updates efficiently', () => {
-    const store = createGraphStore<{ count: number }>(() => ({
+    const store = graphStore<{ count: number }>(() => ({
       count: 0,
     }));
 
@@ -152,7 +151,7 @@ describe('createGraphStore', () => {
   });
 
   it('should reset state', () => {
-    const store = createGraphStore<{ count: number }>(() => ({
+    const store = graphStore<{ count: number }>(() => ({
       count: 0,
     }));
 
@@ -161,17 +160,5 @@ describe('createGraphStore', () => {
 
     store.reset();
     expect(store().count).toBe(0);
-  });
-
-  it('state', () => {
-    const store = graphStore({ name: '', age: 0 });
-
-    const { state, setState } = store.get();
-
-    expect(state.age).toBe(0);
-    setState({ age: 10 });
-    expect(state.age).toBe(10);
-    setState((prev) => ({ age: prev.age + 90 }));
-    expect(state.age).toBe(100);
   });
 });

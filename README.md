@@ -10,8 +10,8 @@ A lightweight workflow engine for TypeScript that lets you create graph-based ex
 
 - [Features](#features)
 - [Installation](#installation)
-- [State-based Workflows](#state-based-workflows) - Main focus: Share state across nodes
 - [Type-safe Workflows](#type-safe-workflows) - Ensure type compatibility between nodes
+- [State-based Workflows](#state-based-workflows) - Share state across nodes
 - [Key Features](#key-features)
 - [Helper Functions](#helper-functions)
 
@@ -29,100 +29,9 @@ A lightweight workflow engine for TypeScript that lets you create graph-based ex
 npm install ts-edge
 ```
 
-## State-based Workflows
-
-The main focus of ts-edge is providing state-based workflows where nodes operate on shared state:
-
-```typescript
-import { createStateGraph, graphStore } from 'ts-edge';
-
-// Define counter state type
-type CounterState = {
-  count: number;
-  name: string;
-};
-
-// Create a state store using graphStore
-const store = graphStore<CounterState>({
-  count: 0,
-  name: '',
-});
-
-// Create a state-based workflow
-// In state-based workflows, nodes share and modify common state
-// Note: Return values from state nodes are ignored
-const workflow = createStateGraph(store)
-  .addNode({
-    name: 'increment',
-    execute: ({ state, setState }) => {
-      // Store type is automatically inferred
-      // Access state
-      console.log(state); // {count:?, name:?}
-
-      // Update state with function-based setter
-      setState((prev) => {
-        return { count: prev.count + 1 };
-      });
-    },
-  })
-  .addNode({
-    name: 'checkCount',
-    execute: ({ state }) => {
-      // Perform logic based on state
-      console.log(`Current count: ${state.count}`);
-    },
-  })
-  .addNode({
-    name: 'reset',
-    execute: ({ setState }) => {
-      // Reset state
-      setState({ count: 0, name: '' });
-    },
-  })
-  .edge('increment', 'checkCount')
-  .dynamicEdge('checkCount', ({ state }) => {
-    // Determine next node based on state
-    return state.count > 10 ? 'reset' : 'increment';
-  });
-
-// Compile and run the workflow
-const app = workflow.compile('increment');
-const result = await app.run(); // Start with initial state
-// Or start with partial state: await app.run({name:'user'});
-
-console.log(result.output); // {state, setState} object
-```
-
-When defining nodes in separate files, use `graphStateNode` with explicit type inference:
-
-```typescript
-import { graphStateNode, graphStore } from 'ts-edge';
-
-// Define state and create store
-type CounterState = { count: number };
-const store = graphStore<CounterState>({ count: 0 });
-
-// Get store type for external node definition
-type CounterStore = graphStore.infer<CounterState>;
-
-// Define node in separate file/module
-const countNode = graphStateNode({
-  name: 'processCount',
-  execute: ({ state, setState }: CounterStore) => {
-    if (state.count < 10) {
-      setState({ count: 10 });
-    }
-  },
-});
-
-// Use in state graph
-const stateGraph = createStateGraph(store);
-stateGraph.addNode(countNode);
-```
-
 ## Type-safe Workflows
 
-Traditional workflows in ts-edge enforce type safety between connected nodes:
+Type-safe workflows in ts-edge ensure type compatibility between connected nodes:
 
 ```typescript
 import { createGraph } from 'ts-edge';
@@ -151,14 +60,80 @@ const workflow = createGraph()
       return input ? [] : [1, 2, 3];
     },
   })
-  .edge('number to string', 'string to boolean') // Type check passes
+  .edge('number to string', 'string to boolean')   // Type check passes
   // .edge('number to string', 'boolean to array')  // ❌ Type error
-  .edge('string to boolean', 'boolean to array'); // Type check passes
+  .edge('string to boolean', 'boolean to array');   // Type check passes
 
 // Compile and run the workflow
 const app = workflow.compile('number to string');
 const result = await app.run(100);
 console.log(result.output); // [1,2,3]
+```
+
+## State-based Workflows
+
+State-based workflows in ts-edge allow nodes to share and modify a common state:
+
+```typescript
+import { createStateGraph, graphStore } from 'ts-edge';
+
+// Define counter state type
+type CounterState = {
+  count: number;
+  increment: () => void;
+  decrement: () => void;
+  updateCount: (count: number) => void;
+};
+
+// Create a state store using graphStore
+const store = graphStore<CounterState>((set, get) => {
+  return {
+    count: 0,
+    increment: () =>
+      set((prev) => {
+        return { count: prev.count + 1 };
+      }),
+    decrement: () => set({ count: get().count - 1 }),
+    updateCount: (count: number) => set({ count }),
+  };
+});
+
+// Create a state-based workflow
+// In state-based workflows, nodes share and modify common state
+// Note: Return values from state nodes are ignored
+const workflow = createStateGraph(store)
+  .addNode({
+    name: 'increment',
+    execute: (state) => {
+      // Access state
+      console.log(state.count); // 0
+
+      state.increment();
+    },
+  })
+  .addNode({
+    name: 'checkCount',
+    execute: (state) => {
+      console.log(`Current count: ${state.count}`);
+    },
+  })
+  .addNode({
+    name: 'reset',
+    execute: (state) => {
+      // Reset state
+      state.updateCount(0);
+    },
+  })
+  .edge('increment', 'checkCount')
+  .dynamicEdge('checkCount', (state) => {
+    // Determine next node based on state
+    return state.count > 10 ? 'reset' : 'increment';
+  });
+
+// Compile and run the workflow
+const app = workflow.compile('increment');
+const result = await app.run(); // Start with initial state
+// Or start with partial state: await app.run({ count: 10 });
 ```
 
 ## Key Features
@@ -172,12 +147,12 @@ const workflow = createGraph()
   .addNode({
     name: 'nodeA',
     execute: (input: number) => ({ value: input * 2 }),
-    metadata: { description: 'Doubles the input value', category: 'math' },
+    metadata: { description: 'Doubles the input value', category: 'math' }
   })
   .addNode({
     name: 'nodeB',
     execute: (input: { value: number }) => ({ result: input.value + 10 }),
-    metadata: { description: 'Adds 10 to the value' },
+    metadata: { description: 'Adds 10 to the value' }
   })
   .edge('nodeA', 'nodeB');
 ```
@@ -193,14 +168,14 @@ addNode({
   execute: (input, context) => {
     // Access node metadata
     console.log(context.metadata); // { version: 1, role: 'processor' }
-
+    
     // Emit stream events (useful for reporting progress during execution)
     context.stream('Processing started...');
     // Perform work
     context.stream('50% complete');
     // Final result
     return { result: 'Completed' };
-  },
+  }
 });
 ```
 
@@ -211,8 +186,8 @@ Make execution decisions based on node outputs:
 ```typescript
 workflow.dynamicEdge('processData', (data) => {
   if (data.value > 100) return ['highValueProcess', 'standardProcess']; // Route to multiple nodes
-  if (data.value < 0) return 'errorHandler'; // Route to a single node
-  return 'standardProcess'; // Default path
+  if (data.value < 0) return 'errorHandler';                            // Route to a single node
+  return 'standardProcess';                                             // Default path
 });
 ```
 
@@ -225,7 +200,7 @@ workflow.dynamicEdge('processData', {
     if (data.value > 100) return ['highValueProcess', 'standardProcess'];
     if (data.value < 0) return 'errorHandler';
     return 'standardProcess';
-  },
+  }
 });
 ```
 
@@ -249,7 +224,7 @@ const workflow = createGraph()
   })
   .addMergeNode({
     name: 'combineResults',
-    branch: ['processBranch1', 'processBranch2'], // Branches to merge
+    branch: ['processBranch1', 'processBranch2'],  // Branches to merge
     execute: (inputs) => ({
       // inputs object contains outputs from each branch node
       result: {
@@ -258,74 +233,7 @@ const workflow = createGraph()
       },
     }),
   })
-  .edge('fetchData', ['processBranch1', 'processBranch2']); // One node to many nodes
-```
-
-### State Management
-
-ts-edge provides two ways to create stores:
-
-#### 1. createGraphStore - Zustand-style advanced state management
-
-```typescript
-type CounterStore = {
-  count: number;
-  increment(): void;
-  decrement(): void;
-  reset(): void;
-};
-
-// Create an advanced store with actions
-const counterStore = createGraphStore<CounterStore>((set, get) => ({
-  count: 0,
-  increment: () => set({ count: get().count + 1 }),
-  decrement: () => set((state) => ({ count: state.count - 1 })),
-  reset: () => set({ count: 0 }),
-}));
-
-const node = graphStateNode({
-  name: 'increment-node',
-  execute: (state: CounterStore) => {
-    if (state.count < 5) {
-      state.increment();
-    } else {
-      state.reset();
-    }
-  },
-});
-
-const workflow = createStateGraph(counterStore).addNode(node);
-```
-
-#### 2. graphStore - A wrapper for simple state objects
-
-```typescript
-type CounterState = {
-  count: number;
-  name: string;
-};
-
-// Create a simple store (uses createGraphStore internally)
-const counterStore = graphStore<CounterState>({
-  count: 0,
-  name: '',
-});
-
-// Extract store type
-type CounterStore = graphStore.infer<typeof counterStore>;
-
-const node = graphStateNode({
-  name: 'increment-node',
-  execute: ({ state, setState }: CounterStore) => {
-    if (state.count < 5) {
-      setState((prev) => ({ count: prev.count + 1 }));
-    } else {
-      setState({ count: 0 });
-    }
-  },
-});
-
-const workflow = createStateGraph(counterStore).addNode(node);
+  .edge('fetchData', ['processBranch1', 'processBranch2']);  // One node to many nodes
 ```
 
 ### Execution Options
@@ -338,8 +246,8 @@ const result = await app.run(input);
 
 // Execution with options
 const resultWithOptions = await app.run(input, {
-  timeout: 5000, // Maximum execution time in ms
-  maxNodeVisits: 50, // Prevent infinite loops
+  timeout: 5000,       // Maximum execution time in ms
+  maxNodeVisits: 50,   // Prevent infinite loops
 });
 
 // State graph initialization
@@ -347,7 +255,7 @@ const stateResult = await stateApp.run({ count: 10, name: 'test' }); // Initiali
 
 // Prevent state reset
 const noResetResult = await stateApp.run(undefined, {
-  noResetState: true, // Don't reset state before execution
+  noResetState: true   // Don't reset state before execution
 });
 ```
 
@@ -376,17 +284,17 @@ app.subscribe((event) => {
   if (event.eventType === 'WORKFLOW_START') {
     console.log(`Workflow started with input:`, event.input);
   }
-
+  
   // Node start event
   else if (event.eventType === 'NODE_START') {
     console.log(`Node started: ${event.node.name}, input:`, event.node.input);
   }
-
+  
   // Node stream event (triggered by context.stream calls)
   else if (event.eventType === 'NODE_STREAM') {
     console.log(`Stream from node ${event.node.name}: ${event.node.chunk}`);
   }
-
+  
   // Node end event
   else if (event.eventType === 'NODE_END') {
     if (event.isOk) {
@@ -395,7 +303,7 @@ app.subscribe((event) => {
       console.error(`Node error: ${event.node.name}, error:`, event.error);
     }
   }
-
+  
   // Workflow end event
   else if (event.eventType === 'WORKFLOW_END') {
     if (event.isOk) {
@@ -422,17 +330,17 @@ app.use((node, next) => {
   if (node.name === 'validation') {
     next({ name: node.name, input: { ...node.input, validated: true } });
   }
-
+  
   // Redirect execution flow to a different node
   else if (node.name === 'router' && node.input.special) {
     next({ name: 'specialHandler', input: node.input });
   }
-
+  
   // Continue normal execution flow
   else {
     next();
   }
-
+  
   // Not calling next() would stop execution
 });
 ```
@@ -444,7 +352,7 @@ ts-edge provides a robust error handling system:
 ```typescript
 try {
   const result = await app.run(input);
-
+  
   if (result.isOk) {
     console.log('Success:', result.output);
   } else {
@@ -468,7 +376,7 @@ import { graphNode } from 'ts-edge';
 const userNode = graphNode({
   name: 'getUser',
   execute: (id: string) => fetchUser(id),
-  metadata: { description: 'Fetches user data' },
+  metadata: { description: 'Fetches user data' }
 });
 
 // Infer types
@@ -477,6 +385,46 @@ type UserNodeType = graphNode.infer<typeof userNode>;
 
 // Use in graph
 graph.addNode(userNode);
+```
+
+### `graphStateNode` - Create state nodes
+
+```typescript
+import { graphStateNode, graphStore } from 'ts-edge';
+
+// Define state and create store
+type CounterState = {
+  count: number;
+  name: string;
+  updateCount: (count: number) => void;
+  updateName: (name: string) => void;
+};
+
+const store = graphStore<CounterState>((set) => {
+  return {
+    count: 0,
+    name: '',
+    updateName(name) {
+      set({ name });
+    },
+    updateCount(count) {
+      set({ count });
+    },
+  };
+});
+
+// Define node in separate file/module
+const countNode = graphStateNode({
+  name: 'processCount',
+  execute: ({ count, updateCount }: CounterState) => {
+    if (count < 10) {
+      updateCount(10);
+    }
+  },
+});
+
+// Use in state graph
+const stateGraph = createStateGraph(store).addNode(countNode);
 ```
 
 ### `graphMergeNode` - Create merge nodes
@@ -501,49 +449,22 @@ graph.addMergeNode(mergeNode);
 import { graphNodeRouter } from 'ts-edge';
 
 // Create a simple router
-const simpleRouter = graphNodeRouter((data) => (data.isValid ? 'success' : 'error'));
+const simpleRouter = graphNodeRouter((data) => (
+  data.isValid ? 'success' : 'error'
+));
 
 // Create a router with explicit targets
-const complexRouter = graphNodeRouter(['success', 'warning', 'error'], (data) => {
-  if (data.score > 90) return 'success';
-  if (data.score > 50) return 'warning';
-  return 'error';
-});
+const complexRouter = graphNodeRouter(
+  ['success', 'warning', 'error'],
+  (data) => {
+    if (data.score > 90) return 'success';
+    if (data.score > 50) return 'warning';
+    return 'error';
+  }
+);
 
 // Use in graph
 graph.dynamicEdge('validate', simpleRouter);
-```
-
-### `graphStateNode` - Create state nodes
-
-```typescript
-import { graphStateNode, graphStore } from 'ts-edge';
-
-// Define state type
-type CounterState = {
-  count: number;
-};
-
-// Create store
-const store = graphStore<CounterState>({ count: 0 });
-
-// Extract store type
-export type CounterStore = graphStore.infer<CounterState>;
-
-// Create a state node
-const countNode = graphStateNode({
-  name: 'processCount',
-  execute: ({ state, setState }: CounterStore) => {
-    if (state.count < 10) {
-      setState({ count: 10 });
-    }
-  },
-  metadata: { description: 'Process count' },
-});
-
-// Use in state graph
-const stateGraph = createStateGraph(store);
-stateGraph.addNode(countNode);
 ```
 
 ## License
