@@ -1,66 +1,25 @@
 # 🔗 ts-edge 🔗
 
-타입스크립트를 위한 경량화된 workflow 엔진으로, 복잡한 설정 없이 타입 안전성이 보장된 그래프 기반 실행 흐름을 만들 수 있습니다.
+타입스크립트를 위한 경량 워크플로우 엔진으로, 타입 안전성과 최소한의 복잡성으로 그래프 기반 실행 흐름을 생성할 수 있습니다.
+
+![parallel](./parallel.png)
+
+## 목차
+
+- [특징](#특징)
+- [설치](#설치)
+- [상태 기반 워크플로우](#상태-기반-워크플로우) - 주요 기능: 노드 간 상태 공유
+- [타입 안전 워크플로우](#타입-안전-워크플로우) - 노드 간 타입 호환성 보장
+- [주요 기능](#주요-기능)
+- [도우미 함수](#도우미-함수)
 
 ## 특징
 
-- **가벼움**: 최소한의 API와 옵션으로 빠르게 배우고 적용할 수 있습니다
-- **고급 타입 추론**: 컴파일 타임에 node 간 입출력 타입 호환성을 검증하여 안전한 연결을 보장합니다
-- **간결한 API**: 꼭 필요한 기능만 제공하여 쉽게 사용 가능합니다
-- **유연한 workflow**: 조건부 분기, 병렬 처리, 결과 병합 등 다양한 패턴을 지원합니다
-
-## 빠른 시작
-
-![Reasoning Acting](./simple.png)
-
-```typescript
-import { createGraph } from 'ts-edge';
-
-// 간단한 AI 에이전트 workflow 정의
-const workflow = createGraph()
-  .addNode({
-    name: 'input',
-    execute: (query: string) => ({ query }),
-  })
-  .addNode({
-    name: 'reasoning',
-    execute: (data) => {
-      const isComplex = data.query.length > 20;
-      return { ...data, isComplex };
-    },
-  })
-  .addNode({
-    name: 'acting',
-    execute: (data) => {
-      return { ...data, result: `다음에 대한 작업 수행: ${data.query}` };
-    },
-  })
-  .addNode({
-    name: 'output',
-    execute: (data) => {
-      return { answer: data.result || `간단한 답변: ${data.query}` };
-    },
-  })
-  .edge('input', 'reasoning')
-  .dynamicEdge('reasoning', (data) => {
-    return data.isComplex ? 'acting' : 'output';
-  })
-  .edge('acting', 'output');
-
-// workflow 컴파일 및 실행
-const app = workflow.compile('input', 'output');
-const result = await app.run('오늘 날씨는 어때요?');
-console.log(result.output); // { answer: "간단한 답변: 오늘 날씨는 어때요?" }
-```
-
-## 개요
-
-ts-edge는 다음과 같은 방식으로 방향성 그래프로 계산 workflow를 정의할 수 있게 해줍니다:
-
-- **Node**: 데이터를 처리하고 출력을 생성
-- **Edge**: node 간의 흐름을 정의
-- **Dynamic routing**: node 출력을 기반으로 결정
-- **Parallel execution**과 **merge node**: 복잡한 패턴 구현
+- **경량화**: 빠르게 배우고 적용할 수 있는 최소한의 API와 옵션
+- **고급 타입 추론**: 컴파일 타임 검증으로 입출력 타입이 일치할 때만 노드를 연결할 수 있도록 보장
+- **간단한 API**: 사용 편의성을 위한 필수 기능만 제공
+- **유연한 워크플로우**: 조건부 분기, 병렬 처리, 결과 병합과 같은 다양한 패턴 지원
+- **상태 관리**: 상태 기반 워크플로우를 위한 내장 스토어 제공
 
 ## 설치
 
@@ -68,57 +27,209 @@ ts-edge는 다음과 같은 방식으로 방향성 그래프로 계산 workflow�
 npm install ts-edge
 ```
 
+## 상태 기반 워크플로우
+
+ts-edge의 주요 기능은 노드 간에 공유 상태를 사용하는 상태 기반 워크플로우입니다:
+
+```typescript
+import { createStateGraph, graphStore } from 'ts-edge';
+
+// 카운터 상태 타입 정의
+type CounterState = {
+  count: number;
+  name: string;
+};
+
+// graphStore를 사용한 상태 스토어 생성
+const store = graphStore<CounterState>({
+  count: 0,
+  name: '',
+});
+
+// 상태 기반 워크플로우 생성
+// 상태 기반 워크플로우에서는 노드들이 공통 상태를 공유하고 수정합니다
+// 참고: 상태 노드의 반환값은 무시됩니다
+const workflow = createStateGraph(store)
+  .addNode({
+    name: 'increment',
+    execute: ({ state, setState }) => {
+      // 스토어 타입은 자동으로 추론됩니다
+      // 상태에 접근
+      console.log(state); // {count:?, name:?}
+
+      // 함수 기반 setter로 상태 업데이트
+      setState((prev) => {
+        return { count: prev.count + 1 };
+      });
+    },
+  })
+  .addNode({
+    name: 'checkCount',
+    execute: ({ state }) => {
+      // 상태를 기반으로 로직 수행
+      console.log(`현재 카운트: ${state.count}`);
+    },
+  })
+  .addNode({
+    name: 'reset',
+    execute: ({ setState }) => {
+      // 상태 초기화
+      setState({ count: 0, name: '' });
+    },
+  })
+  .edge('increment', 'checkCount')
+  .dynamicEdge('checkCount', ({ state }) => {
+    // 상태를 기반으로 다음 노드 결정
+    return state.count > 10 ? 'reset' : 'increment';
+  });
+
+// 워크플로우 컴파일 및 실행
+const app = workflow.compile('increment');
+const result = await app.run(); // 초기 상태로 시작
+// 또는 부분 상태로 시작: await app.run({name:'사용자'});
+
+console.log(result.output); // {state, setState} 객체
+```
+
+별도 파일에서 노드를 정의할 때는 `graphStateNode`와 명시적 타입 추론을 사용합니다:
+
+```typescript
+import { graphStateNode, graphStore } from 'ts-edge';
+
+// 상태 정의 및 스토어 생성
+type CounterState = { count: number };
+const store = graphStore<CounterState>({ count: 0 });
+
+// 외부 노드 정의를 위한 스토어 타입 가져오기
+type CounterStore = graphStore.infer<CounterState>;
+
+// 별도 파일/모듈에서 노드 정의
+const countNode = graphStateNode({
+  name: 'processCount',
+  execute: ({ state, setState }: CounterStore) => {
+    if (state.count < 10) {
+      setState({ count: 10 });
+    }
+  },
+});
+
+// 상태 그래프에서 사용
+const stateGraph = createStateGraph(store);
+stateGraph.addNode(countNode);
+```
+
+## 타입 안전 워크플로우
+
+ts-edge의 타입 안전 워크플로우는 연결된 노드 간의 타입 호환성을 보장합니다:
+
+```typescript
+import { createGraph } from 'ts-edge';
+
+// 각 노드는 이전 노드의 출력을 입력으로 받음
+// TypeScript는 연결된 노드 간의 타입 호환성을 컴파일 시간에 검사
+const workflow = createGraph()
+  .addNode({
+    name: 'number to string',
+    execute: (input: number) => {
+      // 숫자를 문자열로 변환
+      return `${input}을 입력 하였습니다.`;
+    },
+  })
+  .addNode({
+    name: 'string to boolean',
+    execute: (input: string) => {
+      // 문자열을 불리언으로 변환
+      return input !== '';
+    },
+  })
+  .addNode({
+    name: 'boolean to array',
+    execute: (input: boolean) => {
+      // 불리언을 배열로 변환
+      return input ? [] : [1, 2, 3];
+    },
+  })
+  .edge('number to string', 'string to boolean') // 타입 호환성 검사 통과
+  // .edge('number to string', 'boolean to array') // ❌ 타입 오류 발생
+  .edge('string to boolean', 'boolean to array'); // 타입 호환성 검사 통과
+
+// 워크플로우 컴파일 및 실행
+const app = workflow.compile('number to string');
+const result = await app.run(100);
+console.log(result.output); // [1,2,3]
+```
+
 ## 주요 기능
 
-### 기본 Node 및 Edge 정의
+### 기본 노드 및 엣지 정의
 
-Node는 입력을 처리하고 출력을 생성합니다. Edge는 node 간의 흐름을 정의합니다.
+노드는 입력을 처리하고 출력을 생성합니다. 엣지는 노드 간의 흐름을 정의합니다. 노드에는 문서화나 시각화를 위한 선택적 메타데이터를 포함할 수 있습니다.
 
 ```typescript
 const workflow = createGraph()
   .addNode({
     name: 'nodeA',
-    execute: (input) => ({ value: input * 2 }),
+    execute: (input: number) => ({ value: input * 2 }),
+    metadata: { description: '입력값을 두 배로 만듭니다', category: '수학' },
   })
   .addNode({
     name: 'nodeB',
-    execute: (input) => ({ result: input.value + 10 }),
+    execute: (input: { value: number }) => ({ result: input.value + 10 }),
+    metadata: { description: '값에 10을 더합니다' },
   })
   .edge('nodeA', 'nodeB');
 ```
 
-### Dynamic Routing (동적 라우팅)
+### 노드 실행 컨텍스트
 
-노드 출력을 기반으로 실행 결정을 할 수 있습니다:
+각 노드의 실행 함수는 입력 데이터 외에도 컨텍스트 객체를 두 번째 인자로 받을 수 있습니다:
 
 ```typescript
-workflow.dynamicEdge('processData', (data) => {
-  if (data.value > 100) return 'highValueProcess';
-  if (data.value < 0) return 'errorHandler';
-  return 'standardProcess';
+addNode({
+  name: 'streamingNode',
+  metadata: { version: 1, role: 'processor' },
+  execute: (input, context) => {
+    // 노드에 설정된 메타데이터에 접근
+    console.log(context.metadata); // { version: 1, role: 'processor' }
+
+    // 스트림 이벤트 발생 (노드 실행 중 진행 상황 보고에 유용)
+    context.stream('처리 시작...');
+    // 작업 수행
+    context.stream('50% 완료');
+    // 최종 결과
+    return { result: '완료됨' };
+  },
 });
 ```
 
-가시화 개선을 위해 가능한 대상 노드를 미리 정의할 수 있습니다:
+### 동적 라우팅
+
+노드 출력을 기반으로 실행 결정을 내립니다:
+
+```typescript
+workflow.dynamicEdge('processData', (data) => {
+  if (data.value > 100) return ['highValueProcess', 'standardProcess']; // 여러 노드로 분기
+  if (data.value < 0) return 'errorHandler'; // 단일 노드로 분기
+  return 'standardProcess'; // 기본 경로
+});
+```
+
+더 나은 시각화와 문서화를 위해 가능한 대상을 지정할 수 있습니다:
 
 ```typescript
 workflow.dynamicEdge('processData', {
   possibleTargets: ['highValueProcess', 'errorHandler', 'standardProcess'],
   router: (data) => {
-    if (data.value > 100) return 'highValueProcess';
+    if (data.value > 100) return ['highValueProcess', 'standardProcess'];
     if (data.value < 0) return 'errorHandler';
     return 'standardProcess';
   },
 });
 ```
 
-`possibleTargets`를 사용하는 두 번째 방식은 워크플로우 시각화에서 모든 잠재적 경로를 표시할 수 있게 해주어, 그래프를 더 정보적이고 완전하게 만들어 줍니다.
+### 병렬 처리와 병합 노드
 
-### 병렬 처리와 Merge Node
-
-![parallel](./parallel.png)
-
-병렬 branch에서 데이터를 처리하고 결과를 병합할 수 있습니다:
+병렬 브랜치에서 데이터를 처리하고 결과를 병합합니다:
 
 ```typescript
 const workflow = createGraph()
@@ -136,125 +247,245 @@ const workflow = createGraph()
   })
   .addMergeNode({
     name: 'combineResults',
-    branches: ['processBranch1', 'processBranch2'],
+    branch: ['processBranch1', 'processBranch2'], // 병합할 브랜치 노드들
     execute: (inputs) => ({
+      // inputs 객체에는 각 브랜치 노드의 출력이 포함됨
       result: {
         summary: inputs.processBranch1.summary,
         details: inputs.processBranch2.details,
       },
     }),
   })
-  .edge('fetchData', ['processBranch1', 'processBranch2']);
+  .edge('fetchData', ['processBranch1', 'processBranch2']); // 한 노드에서 여러 노드로 분기
+```
+
+### 상태 관리
+
+ts-edge는 두 가지 스토어 생성 방식을 제공합니다:
+
+#### 1. createGraphStore - Zustand 스타일의 고급 상태 관리
+
+```typescript
+type CounterStore = {
+  count: number;
+  increment(): void;
+  decrement(): void;
+  reset(): void;
+};
+
+// 액션이 포함된 고급 스토어 직접 생성
+const counterStore = createGraphStore<CounterStore>((set, get) => ({
+  count: 0,
+  increment: () => set({ count: get().count + 1 }),
+  decrement: () => set((state) => ({ count: state.count - 1 })),
+  reset: () => set({ count: 0 }),
+}));
+
+const node = graphStateNode({
+  name: 'increment-node',
+  execute: (state: CounterStore) => {
+    if (state.count < 5) {
+      state.increment();
+    } else {
+      state.reset();
+    }
+  },
+});
+
+const workflow = createStateGraph(counterStore).addNode(node);
+```
+
+#### 2. graphStore - 간단한 상태 객체를 위한 래퍼
+
+```typescript
+type CounterState = {
+  count: number;
+  name: string;
+};
+
+// 간단한 스토어 생성 (내부적으로 createGraphStore 사용)
+const counterStore = graphStore<CounterState>({
+  count: 0,
+  name: '',
+});
+
+// 스토어 타입 추출
+type CounterStore = graphStore.infer<typeof counterStore>;
+
+const node = graphStateNode({
+  name: 'increment-node',
+  execute: ({ state, setState }: CounterStore) => {
+    if (state.count < 5) {
+      setState((prev) => ({ count: prev.count + 1 }));
+    } else {
+      setState({ count: 0 });
+    }
+  },
+});
+
+const workflow = createStateGraph(counterStore).addNode(node);
 ```
 
 ### 실행 옵션
 
-Workflow의 동작을 제어할 수 있습니다:
+워크플로우의 동작을 제어합니다:
 
 ```typescript
-const result = await app.run(input, {
+// 기본 실행
+const result = await app.run(input);
+
+// 옵션을 포함한 실행
+const resultWithOptions = await app.run(input, {
   timeout: 5000, // 최대 실행 시간(ms)
   maxNodeVisits: 50, // 무한 루프 방지
 });
+
+// 상태 그래프 초기화
+const stateResult = await stateApp.run({ count: 10, name: '테스트' }); // 부분 상태로 초기화
+
+// 상태 리셋 방지
+const noResetResult = await stateApp.run(undefined, {
+  noResetState: true, // 실행 전 상태 초기화하지 않음
+});
 ```
 
-### Start Node와 End Node
+### 시작 및 종료 노드
 
-Workflow를 컴파일할 때 다음을 지정합니다:
-
-- 필수 **start node**: 실행이 시작되는 곳
-- 선택적 **end node**: 명시적으로 지정한 종료 지점
+워크플로우를 컴파일할 때 다음을 지정합니다:
 
 ```typescript
-// start node와 end node 모두 지정
-const app = workflow.compile('inputNode', 'outputNode');
-
-// start node만 지정 - 나가는 edge가 없는 node까지 실행
+// 시작 노드만 지정 - 출력 엣지가 없는 노드에 도달할 때까지 실행
 const app = workflow.compile('inputNode');
+
+// 시작 및 종료 노드 모두 지정 - 종료 노드에 도달하면 실행 종료
+const appWithEnd = workflow.compile('inputNode', 'outputNode');
 ```
 
-End node 동작 방식:
+- **종료 노드가 지정된 경우**: 워크플로우는 종료 노드에 도달하면 종료되고 해당 노드의 출력을 반환합니다.
+- **종료 노드가 지정되지 않은 경우**: 워크플로우는 리프 노드(출력 엣지가 없는 노드)에 도달할 때까지 실행되고 마지막으로 실행된 노드의 출력을 반환합니다.
 
-- **End node를 지정한 경우**: workflow가 end node에 도달하면 즉시 종료되고, 해당 node의 출력이 반환됩니다.
-- **End node를 지정하지 않은 경우**: 더 이상 나가는 edge가 없는 node(리프 node)에 도달할 때까지 실행되며, 마지막으로 실행된 node의 출력이 반환됩니다.
+### 이벤트 구독
 
-End node를 지정하면 특정 지점에서 workflow를 강제로 종료할 수 있어 복잡한 workflow에서 유용합니다.
-
-### Event 구독
-
-Event로 workflow 실행을 모니터링할 수 있습니다:
+이벤트를 통해 워크플로우 실행을 모니터링합니다:
 
 ```typescript
 app.subscribe((event) => {
-  if (event.eventType === 'NODE_START') {
-    console.log(`Node 시작: ${event.node.name}`);
+  // 워크플로우 시작 이벤트
+  if (event.eventType === 'WORKFLOW_START') {
+    console.log(`워크플로우 시작: 입력값:`, event.input);
+  }
+
+  // 노드 시작 이벤트
+  else if (event.eventType === 'NODE_START') {
+    console.log(`노드 시작: ${event.node.name}, 입력값:`, event.node.input);
+  }
+
+  // 노드 스트림 이벤트 (context.stream 호출시 발생)
+  else if (event.eventType === 'NODE_STREAM') {
+    console.log(`노드 ${event.node.name}에서 스트림: ${event.node.chunk}`);
+  }
+
+  // 노드 종료 이벤트
+  else if (event.eventType === 'NODE_END') {
+    if (event.isOk) {
+      console.log(`노드 완료: ${event.node.name}, 출력값:`, event.node.output);
+    } else {
+      console.error(`노드 오류: ${event.node.name}, 오류:`, event.error);
+    }
+  }
+
+  // 워크플로우 종료 이벤트
+  else if (event.eventType === 'WORKFLOW_END') {
+    if (event.isOk) {
+      console.log(`워크플로우 완료, 출력값:`, event.output);
+    } else {
+      console.error(`워크플로우 오류:`, event.error);
+    }
   }
 });
 ```
 
-### Middleware 지원
+### 미들웨어 지원
 
-미들웨어를 추가하여 노드 실행을 가로채거나, 수정하거나, 리디렉션할 수 있습니다:
+노드 실행을 가로채고, 수정하거나 리디렉션하는 미들웨어를 추가합니다:
 
 ```typescript
 const app = workflow.compile('startNode');
 
 // 미들웨어 추가
 app.use((node, next) => {
-  console.log(`실행할 노드: ${node.name}, 입력값:`, node.input);
+  console.log(`노드 실행 예정: ${node.name}, 입력값:`, node.input);
 
-  // 입력값 수정
+  // 입력 수정 후 동일 노드 실행
   if (node.name === 'validation') {
     next({ name: node.name, input: { ...node.input, validated: true } });
   }
-  // 실행 흐름 리디렉션
+
+  // 다른 노드로 실행 흐름 리디렉션
   else if (node.name === 'router' && node.input.special) {
     next({ name: 'specialHandler', input: node.input });
   }
 
-  // 일반 실행 계속
+  // 일반 실행 흐름 계속
+  else {
+    next();
+  }
+
+  // next()를 호출하지 않으면 실행이 중단됨
 });
 ```
 
-## 오류 처리
+### 오류 처리
+
+ts-edge는 강력한 오류 처리 시스템을 제공합니다:
 
 ```typescript
-const result = await app.run(input);
-if (result.isOk) {
-  console.log(result.output);
-} else {
-  console.error(result.error);
+try {
+  const result = await app.run(input);
+
+  if (result.isOk) {
+    console.log('성공:', result.output);
+  } else {
+    console.error('실행 오류:', result.error);
+  }
+} catch (error) {
+  console.error('예상치 못한 오류:', error);
 }
 ```
 
-## Helper 함수
+## 도우미 함수
 
-이 helper 함수들은 node를 별도로 정의하여 코드 구성을 개선하고, 여러 파일에서 재사용할 수 있게 해줍니다.
+이러한 도우미 함수들은 더 나은 구성과 파일 간 재사용성을 위해 노드를 별도로 정의할 수 있게 합니다.
 
-### `graphNode` - Node 생성
+### `graphNode` - 노드 생성
 
 ```typescript
 import { graphNode } from 'ts-edge';
 
-// Node 생성
+// 노드 생성
 const userNode = graphNode({
   name: 'getUser',
   execute: (id: string) => fetchUser(id),
+  metadata: { description: '사용자 데이터를 가져옵니다' },
 });
+
+// 타입 추론
+type UserNodeType = graphNode.infer<typeof userNode>;
+// { name: 'getUser', input: string, output: User }
 
 // 그래프에서 사용
 graph.addNode(userNode);
 ```
 
-### `graphMergeNode` - Merge Node 생성
+### `graphMergeNode` - 병합 노드 생성
 
 ```typescript
 import { graphMergeNode } from 'ts-edge';
 
-// Merge node 생성
+// 병합 노드 생성
 const mergeNode = graphMergeNode({
   name: 'combine',
-  branches: ['userData', 'userStats'] as const,
+  branch: ['userData', 'userStats'],
   execute: (inputs) => ({ ...inputs.userData, stats: inputs.userStats }),
 });
 
@@ -262,18 +493,57 @@ const mergeNode = graphMergeNode({
 graph.addMergeNode(mergeNode);
 ```
 
-### `graphNodeRouter` - Router 생성
+### `graphNodeRouter` - 라우터 생성
 
 ```typescript
 import { graphNodeRouter } from 'ts-edge';
 
-// Router 생성
-const router = graphNodeRouter((data) => (data.isValid ? 'success' : 'error'));
+// 단순 라우터 생성
+const simpleRouter = graphNodeRouter((data) => (data.isValid ? 'success' : 'error'));
+
+// 명시적 대상이 있는 라우터 생성
+const complexRouter = graphNodeRouter(['success', 'warning', 'error'], (data) => {
+  if (data.score > 90) return 'success';
+  if (data.score > 50) return 'warning';
+  return 'error';
+});
 
 // 그래프에서 사용
-graph.dynamicEdge('validate', router);
+graph.dynamicEdge('validate', simpleRouter);
 ```
 
-## 라이선스
+### `graphStateNode` - 상태 노드 생성
+
+```typescript
+import { graphStateNode, graphStore } from 'ts-edge';
+
+// 상태 타입 정의
+type CounterState = {
+  count: number;
+};
+
+// 스토어 생성
+const store = graphStore<CounterState>({ count: 0 });
+
+// 스토어 타입 추출
+export type CounterStore = graphStore.infer<CounterState>;
+
+// 상태 노드 생성
+const countNode = graphStateNode({
+  name: 'processCount',
+  execute: ({ state, setState }: CounterStore) => {
+    if (state.count < 10) {
+      setState({ count: 10 });
+    }
+  },
+  metadata: { description: '카운트 처리' },
+});
+
+// 상태 그래프에서 사용
+const stateGraph = createStateGraph(store);
+stateGraph.addNode(countNode);
+```
+
+## 라이센스
 
 MIT

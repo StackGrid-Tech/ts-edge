@@ -2,7 +2,7 @@ export { graphNode, graphNodeRouter, graphMergeNode, graphStateNode, graphStore 
 
 export { createGraph, createStateGraph } from './core/registry';
 
-export { GraphStore, GraphStoreInitializer, createGraphStore } from './core/create-state';
+export { GraphStore, GraphStoreInitializer, createGraphStore } from './core/store';
 
 export { GraphConfigurationError, GraphDataError, GraphError, GraphErrorCode, GraphExecutionError } from './core/error';
 

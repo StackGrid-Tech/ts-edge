@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createGraphStore } from '../src/core/create-state';
+import { createGraphStore } from '../src/core/store';
 import { graphStore } from '../src';
 
 describe('createGraphStore', () => {

@@ -1,4 +1,4 @@
-import { GraphStoreState } from './core/create-state';
+import { GraphStoreState } from './core/store';
 
 /**
  * Base interface for a graph node.

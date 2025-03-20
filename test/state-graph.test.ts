@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createStateGraph } from '../src/core/registry';
-import { createGraphStore } from '../src/core/create-state';
+import { createGraphStore } from '../src/core/store';
 import { graphStateNode } from '../src';
 
 describe('StateGraph Module', () => {

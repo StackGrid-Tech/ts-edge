@@ -1,7 +1,7 @@
 import { GraphRegistry, GraphRegistryContext, StateGraphRegistry } from '../interfaces';
 import { createGraphRunnable } from './runable';
 import { GraphConfigurationError, GraphErrorCode } from './error';
-import { GraphStore, GraphStoreState } from './create-state';
+import { GraphStore, GraphStoreState } from './store';
 import { safe } from 'ts-safe';
 import { isNull } from '../shared';
 
