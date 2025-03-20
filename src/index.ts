@@ -1,8 +1,8 @@
-export { graphNode, graphNodeRouter, graphMergeNode, graphStateNode } from './core/helper';
+export { graphNode, graphNodeRouter, graphMergeNode, graphStateNode, graphStore } from './core/helper';
 
 export { createGraph, createStateGraph } from './core/registry';
 
-export { GraphStore, GraphStoreInitializer, graphStore, graphState } from './core/create-state';
+export { GraphStore, GraphStoreInitializer, createGraphStore } from './core/create-state';
 
 export { GraphConfigurationError, GraphDataError, GraphError, GraphErrorCode, GraphExecutionError } from './core/error';
 

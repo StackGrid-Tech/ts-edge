@@ -1,7 +1,7 @@
 export type GraphStoreState = Record<string, any>;
 export type StateSetter<T> = Partial<T> | ((prev: T) => Partial<T>);
 
-const updateState = <T>(current: T, update: StateSetter<T>): T => {
+export const updateState = <T>(current: T, update: StateSetter<T>): T => {
   const partial = typeof update !== 'function' ? update : (update as (current: T) => Partial<T>)(current);
   return Object.assign(current ?? {}, partial) as T;
 };
@@ -17,7 +17,7 @@ export type GraphStore<T extends GraphStoreState> = {
   reset(): void;
 };
 
-export const graphStore = <T extends GraphStoreState = GraphStoreState>(
+export const createGraphStore = <T extends GraphStoreState = GraphStoreState>(
   initializer: GraphStoreInitializer<T>
 ): GraphStore<T> => {
   let state: T;
@@ -36,20 +36,4 @@ export const graphStore = <T extends GraphStoreState = GraphStoreState>(
   getState.reset = () => setState({ ...initialState });
 
   return getState;
-};
-
-export const graphState = <T extends GraphStoreState = GraphStoreState>(initialState: T) => {
-  return graphStore<{
-    state: T;
-    setState: (partialState: StateSetter<T>) => void;
-  }>((set) => {
-    return {
-      state: initialState,
-      setState: (partialState: StateSetter<T>) => {
-        set((prev) => ({
-          state: updateState(prev.state, partialState),
-        }));
-      },
-    };
-  });
 };

@@ -1,5 +1,5 @@
 import { GraphNode, GraphNodeMatadata, GraphNodeRouter, GraphNodeExecuteContext } from '../interfaces';
-import { GraphStoreState } from './create-state';
+import { createGraphStore, GraphStoreState, StateSetter, updateState } from './create-state';
 
 export const graphNode = <Name extends string = string, Input = any, Output = any>(node: {
   name: Name;
@@ -44,4 +44,20 @@ export const graphStateNode = <State extends GraphStoreState, Name extends strin
   metadata?: GraphNodeMatadata;
 }) => {
   return node;
+};
+
+export const graphStore = <T extends GraphStoreState = GraphStoreState>(initialState: T) => {
+  return createGraphStore<{
+    state: T;
+    setState: (partialState: StateSetter<T>) => void;
+  }>((set) => {
+    return {
+      state: initialState,
+      setState: (partialState: StateSetter<T>) => {
+        set((prev) => ({
+          state: updateState(prev.state, partialState),
+        }));
+      },
+    };
+  });
 };

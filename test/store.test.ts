@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { graphState, graphStore } from '../src/core/create-state';
+import { createGraphStore } from '../src/core/create-state';
+import { graphStore } from '../src';
 
-describe('graphStore', () => {
+describe('createGraphStore', () => {
   it('should create a store with initial state', () => {
-    const store = graphStore(() => ({
+    const store = createGraphStore(() => ({
       count: 0,
       name: 'test',
     }));
@@ -13,7 +14,7 @@ describe('graphStore', () => {
   });
 
   it('should update state with direct values', () => {
-    const store = graphStore<{ count: number }>(() => ({
+    const store = createGraphStore<{ count: number }>(() => ({
       count: 0,
     }));
 
@@ -22,7 +23,7 @@ describe('graphStore', () => {
   });
 
   it('should update state using a function', () => {
-    const store = graphStore<{ count: number }>(() => ({
+    const store = createGraphStore<{ count: number }>(() => ({
       count: 10,
     }));
 
@@ -39,7 +40,7 @@ describe('graphStore', () => {
       isZero: () => boolean;
     };
 
-    const counter = graphStore<CounterStore>((set, get) => ({
+    const counter = createGraphStore<CounterStore>((set, get) => ({
       count: 0,
       increment: () => set({ count: get().count + 1 }),
       decrement: () => set((state) => ({ count: state.count - 1 })),
@@ -73,7 +74,7 @@ describe('graphStore', () => {
       toggleNotifications: () => void;
     };
 
-    const store = graphStore<NestedStore>((set, get) => ({
+    const store = createGraphStore<NestedStore>((set, get) => ({
       user: {
         name: 'John',
         settings: {
@@ -122,7 +123,7 @@ describe('graphStore', () => {
       addTodo: (todo: string) => void;
     };
 
-    const store = graphStore<TodoStore>((set, get) => ({
+    const store = createGraphStore<TodoStore>((set, get) => ({
       todos: [],
       addTodo: (todo) =>
         set({
@@ -139,7 +140,7 @@ describe('graphStore', () => {
   });
 
   it('should handle many updates efficiently', () => {
-    const store = graphStore<{ count: number }>(() => ({
+    const store = createGraphStore<{ count: number }>(() => ({
       count: 0,
     }));
 
@@ -151,7 +152,7 @@ describe('graphStore', () => {
   });
 
   it('should reset state', () => {
-    const store = graphStore<{ count: number }>(() => ({
+    const store = createGraphStore<{ count: number }>(() => ({
       count: 0,
     }));
 
@@ -163,7 +164,7 @@ describe('graphStore', () => {
   });
 
   it('state', () => {
-    const store = graphState({ name: '', age: 0 });
+    const store = graphStore({ name: '', age: 0 });
 
     const { state, setState } = store.get();
 
