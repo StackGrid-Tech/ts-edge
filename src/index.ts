@@ -26,4 +26,6 @@ export type {
   GraphNodeWithOptionalOutput,
   StateGraphRunnable,
   ConnectableNode,
+  GraphDefaultRunnable,
+  GraphNodeMiddleware,
 } from './interfaces';

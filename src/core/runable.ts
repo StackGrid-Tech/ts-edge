@@ -35,6 +35,7 @@ export const createGraphRunnable = ({
   let exitReason: string | undefined;
 
   const runnable = {
+    isRunning: () => runningIds.length > 0,
     subscribe,
     unsubscribe,
     exit(reason) {

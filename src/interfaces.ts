@@ -1,6 +1,19 @@
 import { GraphStoreState } from './core/store';
 
 /**
+ * Function signature for middleware that can intercept and modify node execution.
+ *
+ * @template T - The GraphNode type
+ * @param node - The node that is about to be executed without its output
+ * @param next - Callback function to continue execution, optionally with a modified route
+ * @returns Any value or Promise
+ */
+export type GraphNodeMiddleware<T extends GraphNode> = (
+  node: GraphNodeWithOutOutput<T>,
+  next: (route?: GraphNodeWithOutOutput<T>) => void
+) => any;
+
+/**
  * Base interface for a graph node.
  * Represents an executable unit that processes input data and produces output.
  *
@@ -17,6 +30,9 @@ export type GraphNode<Name extends string = string, Input = any, Output = any> =
 
   /** Output data from the node. For async outputs, the resolved value is used. */
   output: Output extends PromiseLike<any> ? Awaited<Output> : Output;
+
+  /** Metadata for the node */
+  metadata?: GraphNodeMatadata;
 };
 
 export type GraphNodeMatadata = { [key: string]: any };
@@ -163,18 +179,26 @@ export type GraphNodeStartEvent<T extends GraphNode = GraphNode> = {
   node: GraphNodeWithOutOutput<T>;
 } & Pick<GraphNodeHistory<T>, 'startedAt' | 'threadId' | 'nodeExecutionId'>;
 
+/**
+ * Represents a labeled stream chunk emitted during node execution.
+ *
+ * @template T - The GraphNode type
+ */
 export type GraphNodeStreamEvent<T extends GraphNode = GraphNode> = {
   /** Unique identifier for this execution instance */
   executionId: string;
   /** Event type identifier */
   eventType: 'NODE_STREAM';
+  /** Timestamp when the stream chunk was emitted */
   timestamp: number;
+  /** Information about the node and the stream chunk */
   node: {
+    /** Name of the node that emitted the stream chunk */
     name: T['name'];
+    /** The data chunk being streamed */
     chunk: string;
   };
 } & Pick<GraphNodeHistory<T>, 'threadId' | 'nodeExecutionId'>;
-
 /**
  * Event emitted when a node completes execution.
  *
@@ -226,8 +250,21 @@ export interface GraphRunOptions {
   timeout: number;
 }
 
+/**
+ * Context object passed to node execution functions.
+ * Provides utilities for streaming data and accessing metadata.
+ */
 export type GraphNodeExecuteContext = {
+  /**
+   * Emits a stream chunk during node execution.
+   *
+   * @param chunk - The data to stream
+   */
   stream: (chunk: string) => void;
+
+  /**
+   * Metadata associated with the node.
+   */
   metadata: Record<string, any>;
 };
 
@@ -300,19 +337,27 @@ export type GraphNodeRouter<
   FromNodeName extends AllNode['name'],
   ConnectableNodeName extends AllNode['name'],
 > = Router<Extract<AllNode, { name: FromNodeName }>['output'], ConnectableNodeName>;
+
 /**
- * Interface for a runnable graph workflow.
- * Provides methods to execute, visualize, and monitor the graph.
+ * Default interface for runnable graph workflows.
+ * Provides common methods for both regular and state-based graph workflows.
  *
  * @template T - The GraphNode type
  * @template StartNode - The name of the starting node
  * @template EndNode - The name of the ending node
  */
-export interface GraphRunnable<
+export interface GraphDefaultRunnable<
   T extends GraphNode = never,
   StartNode extends T['name'] = never,
   EndNode extends T['name'] = never,
 > {
+  /**
+   * Returns true if the graph is currently running, false otherwise.
+   *
+   * @returns Boolean indicating whether the graph is currently executing
+   */
+  isRunning(): boolean;
+
   /**
    * Gets the structure of the graph.
    * @returns The graph structure for visualization and analysis
@@ -337,20 +382,44 @@ export interface GraphRunnable<
    * @param options - Optional configuration for execution
    * @returns Promise resolving to the execution result
    */
-  run(input: InputOf<T, StartNode>, options?: Partial<GraphRunOptions>): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
+  run(
+    input?: Partial<InputOf<T, StartNode>>,
+    options?: Partial<GraphRunOptions>
+  ): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
 
   exit(reason?: string): void;
+  use(middleware: GraphNodeMiddleware<T>): any;
+}
 
-  use(
-    middleware: (node: GraphNodeWithOutOutput<T>, next: (route?: GraphNodeWithOutOutput<T>) => void) => any
-  ): GraphRunnable<T, StartNode, EndNode>;
+/**
+ * Interface for a runnable graph workflow.
+ * Provides methods to execute, visualize, and monitor the graph.
+ *
+ * @template T - The GraphNode type
+ * @template StartNode - The name of the starting node
+ * @template EndNode - The name of the ending node
+ */
+export interface GraphRunnable<
+  T extends GraphNode = never,
+  StartNode extends T['name'] = never,
+  EndNode extends T['name'] = never,
+> extends GraphDefaultRunnable<T, StartNode, EndNode> {
+  /**
+   * Executes the graph workflow.
+   * @param input - Input data for the starting node
+   * @param options - Optional configuration for execution
+   * @returns Promise resolving to the execution result
+   */
+  run(input: InputOf<T, StartNode>, options?: Partial<GraphRunOptions>): Promise<GraphResult<T, OutputOf<T, EndNode>>>;
+
+  use(middleware: GraphNodeMiddleware<T>): GraphRunnable<T, StartNode, EndNode>;
 }
 
 export interface StateGraphRunnable<
   T extends GraphNode = never,
   StartNode extends T['name'] = never,
   EndNode extends T['name'] = never,
-> extends Omit<GraphRunnable<T, StartNode, EndNode>, 'run' | 'use'> {
+> extends GraphDefaultRunnable<T, StartNode, EndNode> {
   run(
     input?: Partial<T['input']>,
     options?: Partial<
