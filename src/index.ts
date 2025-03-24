@@ -1,4 +1,4 @@
-export { graphNode, graphNodeRouter, graphMergeNode, graphStateNode } from './core/helper';
+export { graphNode, graphNodeRouter, graphMergeNode, graphStateNode, graphStateMergeNode } from './core/helper';
 
 export { createGraph, createStateGraph } from './core/registry';
 

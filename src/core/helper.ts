@@ -45,3 +45,16 @@ export const graphStateNode = <State extends GraphStoreState, Name extends strin
 }) => {
   return node;
 };
+export const graphStateMergeNode = <State extends GraphStoreState, Name extends string = string, Output = any>(node: {
+  name: Name;
+  branch: string[];
+  execute: (state: State, context: GraphNodeExecuteContext) => Output;
+  metadata?: GraphNodeMatadata;
+}) => {
+  return graphMergeNode({
+    branch: node.branch,
+    name: node.name,
+    metadata: node.metadata,
+    execute: (inputs, context) => node.execute(Object.values(inputs)[0] as State, context),
+  });
+};
