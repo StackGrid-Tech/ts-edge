@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       ts-safe:
-        specifier: ^0.0.4
-        version: 0.0.4
+        specifier: ^0.0.5
+        version: 0.0.5
     devDependencies:
       '@eslint/js':
         specifier: ^9.19.0
@@ -1234,8 +1234,8 @@ packages:
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
 
-  ts-safe@0.0.4:
-    resolution: {integrity: sha512-UmrDAIUiqzSJrSa4VuJPdvcuPC7cHg/3GBm0iBApHhurXdJ5SAUaSocZcaJnPkSV8V1sE4v5SapCo9wDU4T1cg==}
+  ts-safe@0.0.5:
+    resolution: {integrity: sha512-Bai5dobPYWmDurdCm3G/YUhB1gKu8MPudtg6bwRrLNVuUJ7vyXTad6NOYmdksBY4m3YV5JmbDvkdJqiX6Q7CSQ==}
     engines: {node: '>=14.0.0'}
 
   tsup@8.4.0:
@@ -2458,7 +2458,7 @@ snapshots:
 
   ts-interface-checker@0.1.13: {}
 
-  ts-safe@0.0.4: {}
+  ts-safe@0.0.5: {}
 
   tsup@8.4.0(postcss@8.5.3)(typescript@5.7.3):
     dependencies:

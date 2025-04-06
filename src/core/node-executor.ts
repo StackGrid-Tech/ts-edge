@@ -47,7 +47,7 @@ export const createNodeExecutor =
           } as GraphNodeStartEvent)
         )
         // Validate node exists
-        .effect((node) => {
+        .ifOk((node) => {
           if (!node) {
             throw GraphExecutionError.nodeExecutionFailed(name, new Error(`Node not found: "${name}"`), input);
           }

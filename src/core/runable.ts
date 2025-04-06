@@ -41,7 +41,7 @@ export const createGraphRunnable = ({
     exit(reason) {
       if (!runningIds.length) return;
       exitReason = safe(() => String(reason) || '')
-        .catch((e) => e?.name || 'stop-error')
+        .ifFail((e) => e?.name || 'stop-error')
         .unwrap();
     },
     use(middleware) {
@@ -292,7 +292,7 @@ export const createGraphRunnable = ({
             ) as Promise<never>
         )
         .map(toResult(true))
-        .catch(toResult(false))
+        .ifFail(toResult(false))
         .watch(() => {
           runningIds = runningIds.filter((v) => v != executionId);
         })
