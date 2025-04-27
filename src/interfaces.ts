@@ -21,7 +21,12 @@ export type GraphNodeMiddleware<T extends GraphNode> = (
  * @template Input - The type of the node input
  * @template Output - The type of the node output
  */
-export type GraphNode<Name extends string = string, Input = any, Output = any> = {
+export type GraphNode<
+  Name extends string = string,
+  Input = any,
+  Output = any,
+  Metadata extends GraphNodeMetadata = GraphNodeMetadata,
+> = {
   /** Unique identifier for the node */
   readonly name: Name;
 
@@ -32,10 +37,10 @@ export type GraphNode<Name extends string = string, Input = any, Output = any> =
   output: Output extends PromiseLike<any> ? Awaited<Output> : Output;
 
   /** Metadata for the node */
-  metadata?: GraphNodeMatadata;
+  metadata?: Metadata;
 };
 
-export type GraphNodeMatadata = { [key: string]: any };
+export type GraphNodeMetadata = { [key: string]: any };
 
 /**
  * Extracts the input type of a node with a specific name.
@@ -281,7 +286,7 @@ export type GraphNodeStructure = {
     type: 'direct' | 'dynamic';
     name: string[];
   };
-  metadata: GraphNodeMatadata;
+  metadata: GraphNodeMetadata;
   isMergeNode: boolean;
 };
 
@@ -451,7 +456,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
   addNode<Name extends string = string, Input = any, Output = any>(node: {
     name: Name;
     execute: (input: Input, context: GraphNodeExecuteContext) => Output;
-    metadata?: GraphNodeMatadata;
+    metadata?: GraphNodeMetadata;
   }): GraphRegistry<T | GraphNode<Name, Input, Output>, Connected>;
 
   /**
@@ -465,7 +470,7 @@ export interface GraphRegistry<T extends GraphNode = never, Connected extends st
     branch: Branch;
     name: Name;
     execute: (inputs: { [K in Branch[number]]: OutputOf<T, K> }, context: GraphNodeExecuteContext) => Output;
-    metadata?: GraphNodeMatadata;
+    metadata?: GraphNodeMetadata;
   }): GraphRegistry<T | GraphNode<Name, any, Output>, Connected>;
 
   /**
@@ -559,7 +564,7 @@ export interface StateGraphRegistry<
   addNode<Name extends string = string, Output = any>(node: {
     name: Name;
     execute: (state: T, context: GraphNodeExecuteContext) => Output;
-    metadata?: GraphNodeMatadata;
+    metadata?: GraphNodeMetadata;
   }): StateGraphRegistry<T, NodeName | Name, Connected>;
 
   /**
@@ -590,7 +595,7 @@ export interface StateGraphRegistry<
     branch: Branch;
     name: Name;
     execute: (inputs: { [K in Branch[number]]: T }, context: GraphNodeExecuteContext) => any;
-    metadata?: GraphNodeMatadata;
+    metadata?: GraphNodeMetadata;
   }): StateGraphRegistry<T, NodeName | Name, Connected>;
 
   /**
@@ -675,7 +680,7 @@ export interface StateGraphRegistry<
 
 export type GraphNodeContext = {
   execute: Function;
-  metadata: GraphNodeMatadata;
+  metadata: GraphNodeMetadata;
   edge?: {
     type: 'direct' | 'dynamic';
     next: string[];
