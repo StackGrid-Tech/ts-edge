@@ -928,5 +928,40 @@ describe('Workflow Module', () => {
       // The longProcess node should not have completed
       expect(processingSpy).not.toHaveBeenCalled();
     });
+
+    it('should disable history recording when disableHistory option is true', async () => {
+      const workflow = createGraph()
+        .addNode({
+          name: 'start',
+          execute: (input: number) => input * 2,
+        })
+        .addNode({
+          name: 'middle',
+          execute: (input: number) => input + 5,
+        })
+        .addNode({
+          name: 'end',
+          execute: (input: number) => input * 3,
+        })
+        .edge('start', 'middle')
+        .edge('middle', 'end');
+
+      const app = workflow.compile('start');
+
+      // Test with disableHistory: true
+      const resultWithoutHistory = await app.run(5, { disableHistory: true });
+      expect(resultWithoutHistory.isOk).toBe(true);
+      expect(resultWithoutHistory.output).toBe(45); // ((5 * 2) + 5) * 3 = 45
+      expect(resultWithoutHistory.histories).toHaveLength(0); // No history recorded
+
+      // Test with disableHistory: false (default behavior)
+      const resultWithHistory = await app.run(5, { disableHistory: false });
+      expect(resultWithHistory.isOk).toBe(true);
+      expect(resultWithHistory.output).toBe(45);
+      expect(resultWithHistory.histories).toHaveLength(3); // All nodes recorded in history
+      expect(resultWithHistory.histories[0].node.name).toBe('start');
+      expect(resultWithHistory.histories[1].node.name).toBe('middle');
+      expect(resultWithHistory.histories[2].node.name).toBe('end');
+    });
   });
 });

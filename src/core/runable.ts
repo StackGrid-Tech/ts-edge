@@ -72,7 +72,7 @@ export const createGraphRunnable = ({
      * Executes the graph with the provided input
      */
     async run(input, options) {
-      const opt: GraphRunOptions = { timeout: 600000, maxNodeVisits: 100, ...(options as any) };
+      const opt: GraphRunOptions = { timeout: 600000, maxNodeVisits: 100, disableHistory: false, ...(options as any) };
       exitReason = undefined;
       const executionId = randomId();
       runningIds.push(executionId);
@@ -94,6 +94,7 @@ export const createGraphRunnable = ({
       const histories: GraphNodeHistory[] = [];
 
       const recordExecution = (history: GraphNodeHistory) => {
+        if (opt.disableHistory) return;
         histories.push(history);
       };
 

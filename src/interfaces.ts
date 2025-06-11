@@ -253,6 +253,8 @@ export interface GraphRunOptions {
   maxNodeVisits: number;
   /** Maximum execution time in milliseconds before timeout */
   timeout: number;
+  /** Disable history recording */
+  disableHistory: boolean;
 }
 
 /**
