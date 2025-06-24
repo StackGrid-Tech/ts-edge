@@ -289,7 +289,11 @@ export const createGraphRunnable = ({
                 .watch(emitGraphEndEvent)
                 .unwrap() as never,
               Math.max(0, opt.timeout),
-              GraphExecutionError.timeout(opt.timeout)
+              () => {
+                const error = GraphExecutionError.timeout(opt.timeout);
+                threadPool.abort(error.message);
+                return error;
+              }
             ) as Promise<never>
         )
         .map(toResult(true))

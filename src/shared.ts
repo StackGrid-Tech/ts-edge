@@ -1,3 +1,5 @@
+import { safe } from 'ts-safe';
+
 export const isNull = (v: unknown): v is undefined | null => {
   return v == undefined;
 };
@@ -10,11 +12,21 @@ export const randomId = () => {
   });
 };
 
-export const withTimeout = <T>(promise: PromiseLike<T>, ms: number, error?: Error): Promise<T> => {
+export const withTimeout = <T>(
+  promise: PromiseLike<T>,
+  ms: number,
+  error?: Error | (() => Error | Promise<Error>)
+): Promise<T> => {
   let key;
   return new Promise<T>((ok, timeout) => {
-    key = setTimeout(() => {
-      timeout(error ?? new Error(`Execution aborted: Timeout of ${ms}ms exceeded`));
+    key = setTimeout(async () => {
+      let _err: any = error;
+      if (typeof error === 'function') {
+        _err = await safe(error)
+          .ifFail((e) => e)
+          .unwrap();
+      }
+      timeout(_err ?? new Error(`Execution aborted: Timeout of ${ms}ms exceeded`));
     }, ms);
     promise.then(
       (res) => ok(res),
