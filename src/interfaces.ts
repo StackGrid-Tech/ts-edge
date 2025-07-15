@@ -378,6 +378,12 @@ export interface GraphDefaultRunnable<
   subscribe(handler: (event: GraphEvent<T, StartNode, EndNode>) => any): void;
 
   /**
+   * Subscribes to graph execution events.
+   * @param event
+   */
+  publish(event: GraphNodeStartEvent | GraphNodeEndEvent | GraphNodeStreamEvent): void;
+
+  /**
    * Unsubscribes from graph execution events.
    * @param handler - The handler function to remove
    */

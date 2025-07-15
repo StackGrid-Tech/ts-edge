@@ -38,6 +38,7 @@ export const createGraphRunnable = ({
     isRunning: () => runningIds.length > 0,
     subscribe,
     unsubscribe,
+    publish,
     exit(reason) {
       if (!runningIds.length) return;
       exitReason = safe(() => String(reason) || '')
